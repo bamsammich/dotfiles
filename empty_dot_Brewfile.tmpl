@@ -6,6 +6,8 @@ brew "jq"
 brew "zsh-history-substring-search"
 brew "zsh-syntax-highlighting"
 brew "ghq"
+brew "chezmoi"
+brew "rtx"
 {{- range .homebrew.brews }}
 brew {{ . | quote }}
 {{- end }}
