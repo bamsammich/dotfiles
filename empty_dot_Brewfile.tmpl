@@ -1,9 +1,18 @@
 brew "git"
+brew "coreutils"
+brew "k9s"
+brew "fzf"
+brew "jq"
+{{- range .homebrew.brews }}
+brew {{ . | quote }}
+{{- end }}
 
 cask "1password"
 cask "1password-cli"
 cask "element"
-cask "slack"
 cask "amethyst"
-cask "zoom"
 cask "visual-studio-code"
+cask "google-chrome"
+{{- range .homebrew.casks }}
+cask {{ . | quote }}
+{{- end }}
