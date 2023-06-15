@@ -1,0 +1,28 @@
+[commit]
+	gpgSign = true
+
+[filter "lfs"]
+	clean = "git-lfs clean -- %f"
+	process = "git-lfs filter-process"
+	required = true
+	smudge = "git-lfs smudge -- %f"
+
+[gpg]
+	format = "ssh"
+
+[gpg "ssh"]
+	program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
+
+[pull]
+	rebase = false
+
+[tag]
+	gpgSign = true
+
+[url "git@github.com:"]
+	insteadOf = "https://github.com/"
+
+[user]
+	email = {{ .email | quote }}
+	name = "Travis Huddleston"
+	signingKey = {{ onepasswordRead "op://Private/SSH Key/public key" | quote }}
