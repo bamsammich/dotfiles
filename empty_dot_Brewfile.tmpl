@@ -5,6 +5,7 @@ brew "fzf"
 brew "jq"
 brew "zsh-history-substring-search"
 brew "zsh-syntax-highlighting"
+brew "ghq"
 {{- range .homebrew.brews }}
 brew {{ . | quote }}
 {{- end }}
