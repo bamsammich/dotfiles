@@ -3,11 +3,12 @@ brew "coreutils"
 brew "k9s"
 brew "fzf"
 brew "jq"
+brew "zsh-history-substring-search"
+brew "zsh-syntax-highlighting"
 {{- range .homebrew.brews }}
 brew {{ . | quote }}
 {{- end }}
 
-cask "1password"
 cask "1password-cli"
 cask "element"
 cask "amethyst"
