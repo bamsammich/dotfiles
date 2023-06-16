@@ -1,28 +1,7 @@
-typeset -U path cdpath fpath manpath
-
-path+="$HOME/.zsh/plugins/custom-aws"
-fpath+="$HOME/.zsh/plugins/custom-aws"
-path+="$HOME/.zsh/plugins/custom-goto"
-fpath+="$HOME/.zsh/plugins/custom-goto"
-path+="$HOME/.zsh/plugins/custom-git"
-fpath+="$HOME/.zsh/plugins/custom-git"
-
-# source $ZSH/oh-my-zsh.sh
-
 source /usr/local/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 # antigen
 source $HOME/antigen.zsh
 antigen init $HOME/.antigenrc
-
-# if [[ -f "$HOME/.zsh/plugins/custom-aws/aws.sh" ]]; then
-#   source "$HOME/.zsh/plugins/custom-aws/aws.sh"
-# fi
-# if [[ -f "$HOME/.zsh/plugins/custom-goto/goto.zsh" ]]; then
-#   source "$HOME/.zsh/plugins/custom-goto/goto.zsh"
-# fi
-# if [[ -f "$HOME/.zsh/plugins/custom-git/git.sh" ]]; then
-#   source "$HOME/.zsh/plugins/custom-git/git.sh"
-# fi
 
 # History options should be set in .zshrc and after oh-my-zsh sourcing.
 # See https://github.com/nix-community/home-manager/issues/177.

@@ -7,6 +7,7 @@ antigen bundle command-not-found
 antigen bundle docker
 antigen bundle colorize
 antigen bundle safe-paste
+antigen bundle kubectl
 
 # Additional bundles
 antigen bundle zsh-users/zsh-syntax-highlighting
