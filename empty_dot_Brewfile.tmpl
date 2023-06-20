@@ -1,13 +1,15 @@
+tap "homebrew/cask-fonts"
+
 brew "git"
 brew "coreutils"
 brew "k9s"
 brew "fzf"
 brew "jq"
-brew "zsh-history-substring-search"
-brew "zsh-syntax-highlighting"
 brew "ghq"
 brew "chezmoi"
 brew "rtx"
+brew "binutils"
+brew "antidote"
 {{- range .homebrew.brews }}
 brew {{ . | quote }}
 {{- end }}
@@ -17,6 +19,7 @@ cask "element"
 cask "amethyst"
 cask "visual-studio-code"
 cask "google-chrome"
+cask "font-hack-nerd-font"
 {{- range .homebrew.casks }}
 cask {{ . | quote }}
 {{- end }}

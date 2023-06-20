@@ -1,36 +1,32 @@
-source /usr/local/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-# antigen
 source $HOME/antigen.zsh
-antigen init $HOME/.antigenrc
 
-# History options should be set in .zshrc and after oh-my-zsh sourcing.
-# See https://github.com/nix-community/home-manager/issues/177.
-HISTSIZE="10000"
-SAVEHIST="10000"
+# Load the oh-my-zsh's library.
+antigen use oh-my-zsh
 
-HISTFILE="$HOME/.zsh_history"
-mkdir -p "$(dirname "$HISTFILE")"
+# Bundles from the default repo (robbyrussell's oh-my-zsh).
+antigen bundle git
+antigen bundle command-not-found
+antigen bundle docker
+antigen bundle colorize
+antigen bundle safe-paste
+antigen bundle kubectl
 
-setopt HIST_FCNTL_LOCK
-setopt HIST_IGNORE_DUPS
-setopt HIST_IGNORE_SPACE
-unsetopt HIST_EXPIRE_DUPS_FIRST
-setopt SHARE_HISTORY
-unsetopt EXTENDED_HISTORY
+# Additional bundles
+antigen bundle zsh-users/zsh-syntax-highlighting
+antigen bundle zsh-users/zsh-autosuggestions
+antigen bundle zsh-users/zsh-completions
+antigen bundle ael-code/zsh-colored-man-pages
 
-PATH=/usr/local/bin:$HOME/.local/bin:$PATH
+# Load the theme.
+antigen bundle romkatv/powerlevel10k
 
-# Get additional ZSH config
-if [[ -n $(find ~/.zsh.d -type f 2> /dev/null) ]]; then
-  for f in ~/.zsh.d/*; do
-    source $f
-  done
-fi
+antigen apply
+
+PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:/usr/local/opt/binutils/bin:$PATH
 
 # Aliases
 alias ls='ls -al --color=auto'
 
-source /usr/local/share/zsh-history-substring-search/zsh-history-substring-search.zsh
 bindkey '^[[A' history-substring-search-up
 bindkey '^[[B' history-substring-search-down
 
