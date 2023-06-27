@@ -17,10 +17,14 @@ antigen bundle zsh-users/zsh-autosuggestions
 antigen bundle zsh-users/zsh-completions
 antigen bundle ael-code/zsh-colored-man-pages
 
-# Load the theme.
-antigen bundle romkatv/powerlevel10k
-
 antigen apply
+
+# Theme
+if [[ ! -d $HOME/powerlevel10k ]]; then
+  git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
+fi
+source $HOME/powerlevel10k/powerlevel10k.zsh-theme
+[[ ! -f $HOME/.p10k.zsh ]] || source $HOME/.p10k.zsh
 
 PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:/usr/local/opt/binutils/bin:$PATH
 
