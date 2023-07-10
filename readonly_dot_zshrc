@@ -1,5 +1,4 @@
-if type brew &>/dev/null
-then
+if type brew &> /dev/null; then
   FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
 
   autoload -Uz compinit
@@ -47,6 +46,12 @@ bindkey '^[[A' history-substring-search-up
 bindkey '^[[B' history-substring-search-down
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+[[ -f ~/.p10k.rtx.zsh ]] && source ~/.p10k.rtx.zsh
 
 eval "$(rtx activate zsh)"
+
+for f in $HOME/.zsh.d/*; do
+  [[ -d $f ]] && continue
+  source "$f"
+done
