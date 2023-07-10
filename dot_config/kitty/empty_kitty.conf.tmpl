@@ -1,3 +1,9 @@
 {{- if .kitty.theme -}}
 include kitty-themes/themes/{{ .kitty.theme }}.conf
 {{- end }}
+
+map kitty_mod+s launch --location=hsplit --cwd=current
+map kitty_mod+a launch --location=vsplit --cwd=current
+
+font_family 				Hack Nerd Font Mono
+focus_follows_mouse	yes
