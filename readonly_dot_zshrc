@@ -7,7 +7,7 @@ fi
 
 PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:/usr/local/opt/binutils/bin:/opt/homebrew/bin:$PATH
 
-source /opt/homebrew/share/antigen/antigen.zsh
+source $(brew --prefix)/share/antigen/antigen.zsh
 
 # Load the oh-my-zsh's library.
 antigen use oh-my-zsh
