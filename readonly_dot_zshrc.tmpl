@@ -35,6 +35,9 @@ fi
 source $HOME/powerlevel10k/powerlevel10k.zsh-theme
 [[ ! -f $HOME/.p10k.zsh ]] || source $HOME/.p10k.zsh
 
+# Vars
+export OP_ACCOUNT={{ .onepassword.account | quote }}
+
 # Aliases
 alias ls='ls -al --color=auto'
 alias ch='chezmoi'
