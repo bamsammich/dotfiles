@@ -1,29 +1,25 @@
 tap "homebrew/cask-fonts"
 
-brew "git"
-brew "coreutils"
-brew "k9s"
-brew "fzf"
-brew "jq"
-brew "ghq"
-brew "chezmoi"
-brew "rtx"
-brew "binutils"
-brew "antigen"
-{{- range .homebrew.brews }}
+# ----- FORMULAE -----
+# source: {{ .chezmoi.sourceDir }}/.chezmoidata.yaml
+{{- range (.global.homebrew.brews | uniq | sortAlpha) }}
 brew {{ . | quote }}
 {{- end }}
+{{ if .homebrew.brews }}
+# source: {{ .chezmoi.configFile }}
+{{- range (.homebrew.brews | uniq | sortAlpha) }}
+brew {{ . | quote }}
+{{- end }}
+{{- end }}
 
-cask "1password"
-cask "1password-cli"
-cask "element"
-cask "amethyst"
-cask "visual-studio-code"
-cask "google-chrome"
-cask "font-hack-nerd-font"
-cask "kitty"
-cask "spotify"
-cask "obsidian"
-{{- range .homebrew.casks }}
+# ------- CASKS -------
+# source: {{ .chezmoi.sourceDir }}/.chezmoidata.yaml
+{{- range (.global.homebrew.casks | uniq | sortAlpha) }}
 cask {{ . | quote }}
+{{- end }}
+{{ if .homebrew.casks }}
+# source: {{ .chezmoi.configFile }}
+{{- range (.homebrew.casks | uniq | sortAlpha) }}
+cask {{ . | quote }}
+{{- end }}
 {{- end }}

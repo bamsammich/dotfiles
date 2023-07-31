@@ -1,0 +1,24 @@
+global:
+  homebrew:
+    brews:
+    - "git"
+    - "coreutils"
+    - "k9s"
+    - "fzf"
+    - "jq"
+    - "ghq"
+    - "chezmoi"
+    - "rtx"
+    - "binutils"
+    - "antigen"
+    casks:
+    - "1password"
+    - "1password-cli"
+    - "element"
+    - "amethyst"
+    - "visual-studio-code"
+    - "google-chrome"
+    - "font-hack-nerd-font"
+    - "kitty"
+    - "spotify"
+    - "obsidian"

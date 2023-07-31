@@ -1,6 +1,6 @@
 () {
   function prompt_rtx() {
-    local plugins=("${(@f)$(rtx current 2>/dev/null)}")
+    local plugins=("${(@f)$(rtx ls --current 2>/dev/null | awk '$3!="~/.tool-versions" {print $1, $2}')}")
     local plugin
     for plugin in ${(k)plugins}; do
       local parts=("${(@s/ /)plugin}")

@@ -16,12 +16,17 @@
 [pull]
 	rebase = false
 
+[push]
+  autoSetupRemote = true
+
 [tag]
 	gpgSign = true
 
 [url "git@github.com:"]
 	insteadOf = "https://github.com/"
 
+[url "git@gitlab.infrastructure.immuta.io:"]
+	insteadOf = "https://gitlab.infrastructure.immuta.io"
 [user]
 	email = {{ .email | quote }}
 	name = "Travis Huddleston"
