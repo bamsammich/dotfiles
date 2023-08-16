@@ -1,3 +1,6 @@
+[alias]
+  co = checkout
+
 [commit]
 	gpgSign = true
 
@@ -27,6 +30,7 @@
 
 [url "git@gitlab.infrastructure.immuta.io:"]
 	insteadOf = "https://gitlab.infrastructure.immuta.io"
+
 [user]
 	email = {{ .email | quote }}
 	name = "Travis Huddleston"
