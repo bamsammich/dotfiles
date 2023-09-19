@@ -5,7 +5,7 @@ if type brew &> /dev/null; then
   compinit
 fi
 
-PATH=/usr/bin:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:/usr/local/opt/binutils/bin:/opt/homebrew/bin:$PATH
+PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$(brew --prefix)/bin:/usr/bin:$PATH"
 
 source $(brew --prefix)/share/antigen/antigen.zsh
 
@@ -41,7 +41,7 @@ source $HOME/powerlevel10k/powerlevel10k.zsh-theme
 
 # Vars
 export OP_ACCOUNT={{ .onepassword.account | quote }}
-export SSH_AUTH_SOCK=~/Library/Group\ Containers/2BUA8C4S2C.com.1password/t/agent.sock
+# export SSH_AUTH_SOCK=~/Library/Group\ Containers/2BUA8C4S2C.com.1password/t/agent.sock
 
 # Aliases
 alias ls='ls -al --color=auto'
@@ -58,6 +58,7 @@ bindkey '^[[B' history-substring-search-down
 [[ -f ~/.p10k.rtx.zsh ]] && source ~/.p10k.rtx.zsh
 
 eval "$(rtx activate zsh)"
+eval "$(direnv hook zsh)"
 
 for f in $HOME/.zsh.d/*; do
   [[ -d $f ]] && continue
