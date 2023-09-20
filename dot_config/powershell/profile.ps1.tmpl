@@ -31,8 +31,6 @@ function Set-OhMyPoshTheme {
   curl "$($URL.AbsoluteUri)$Name" --silent --output "$ThemesDirectory/$Name"
 }
 
-
-
 $env:PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$(brew --prefix)/bin:/usr/bin:$($env:PATH)"
 $env:PWSH_THEMES_DIR = "$HOME/.pwsh/themes"
 $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
@@ -40,11 +38,7 @@ $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 # Set-OhMyPoshTheme -Name "pwsh10k.omp.json" -URL "https://raw.githubusercontent.com/Kudostoy0u/pwsh10k/master/" -ThemesDirectory $env:PWSH_THEMES_DIR
 Set-OhMyPoshTheme -Name "powerlevel10k_lean.omp.json" -ThemesDirectory $env:PWSH_THEMES_DIR
 
-Set-Alias -Name "ls" -Value "ls -al --color=auto"
 Set-Alias -Name "ch" -Value "chezmoi"
-Set-Alias -Name "chgit" -Value "chezmoi git"
-Set-Alias -Name "chapply" -Value "chezmoi apply"
-Set-Alias -Name "chedit" -Value "chezmoi edit"
 
 if (Get-Item "$HOME/.pwsh/init" -ErrorAction SilentlyContinue) {
   Get-ChildItem "$HOME/.pwsh/init" | ForEach-Object {
