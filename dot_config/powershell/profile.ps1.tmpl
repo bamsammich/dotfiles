@@ -22,13 +22,17 @@ function Set-OhMyPoshTheme {
     [Parameter()]
     [uri]$URL = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/",
     [Parameter()]
-    [string]$ThemesDirectory = "$HOME/.pwsh/themes"
+    [string]$ThemesDirectory = "$HOME/.pwsh/themes",
+    [Parameter()]
+    [bool]$Force
   )
   if (!(Get-Item $ThemesDirectory -ErrorAction SilentlyContinue)) {
     New-Item -Path $ThemesDirectory -ItemType Directory
   }
   oh-my-posh init pwsh --config "$ThemesDirectory/$Name" | Invoke-Expression
-  curl "$($URL.AbsoluteUri)$Name" --silent --output "$ThemesDirectory/$Name"
+  if ($Force -or -not (Get-Item "$ThemesDirectory/$Name")) {
+    curl "$($URL.AbsoluteUri)$Name" --silent --output "$ThemesDirectory/$Name"
+  }
 }
 
 $env:PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$(brew --prefix)/bin:/usr/bin:$($env:PATH)"
