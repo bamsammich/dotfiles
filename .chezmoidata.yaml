@@ -11,6 +11,7 @@ global:
     - "rtx"
     - "binutils"
     - "antigen"
+    - "oh-my-posh"
     casks:
     - "1password"
     - "1password-cli"
@@ -22,3 +23,5 @@ global:
     - "kitty"
     - "spotify"
     - "obsidian"
+    - "iTerm2"
+    - "powershell"
