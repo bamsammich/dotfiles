@@ -1,4 +1,7 @@
 tap "homebrew/cask-fonts"
+{{- range .homebrew.taps }}
+tap {{ . | quote }}
+{{- end }}
 
 # ----- FORMULAE -----
 # source: {{ .chezmoi.sourceDir }}/.chezmoidata.yaml
