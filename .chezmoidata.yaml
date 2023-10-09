@@ -25,3 +25,5 @@ global:
     - "obsidian"
     - "iTerm2"
     - "powershell"
+    taps:
+    - "homebrew/cask-fonts"

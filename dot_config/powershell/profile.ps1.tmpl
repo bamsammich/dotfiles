@@ -1,51 +1,22 @@
 #!/usr/bin/env pwsh
 
 $modules = @("posh-git")
-$modules | ForEach-Object {
-  if (!(Get-Module $_)) {
-    Install-Module -Name $_ -Scope CurrentUser -Force
-  }
-  Import-Module $_
-}
 
-<#
-.SYNOPSIS
-    Short description here
-#>
-function Set-OhMyPoshTheme {
-  [CmdletBinding()]
-  param (
-    # Filename of the theme. Should end with ".omp.json"
-    [Parameter(Mandatory)]
-    [ValidatePattern('.*|\.omp\.json')]
-    [string]$Name,
-    [Parameter()]
-    [uri]$URL = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/",
-    [Parameter()]
-    [string]$ThemesDirectory = "$HOME/.pwsh/themes",
-    [Parameter()]
-    [bool]$Force
-  )
-  if (!(Get-Item $ThemesDirectory -ErrorAction SilentlyContinue)) {
-    New-Item -Path $ThemesDirectory -ItemType Directory
-  }
-  oh-my-posh init pwsh --config "$ThemesDirectory/$Name" | Invoke-Expression
-  if ($Force -or -not (Get-Item "$ThemesDirectory/$Name")) {
-    curl "$($URL.AbsoluteUri)$Name" --silent --output "$ThemesDirectory/$Name"
-  }
-}
+Install-Module -Name $modules
+$modules | Import-Module
 
+# Environment Variables
 $env:PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$(brew --prefix)/bin:/usr/bin:$($env:PATH)"
 $env:PWSH_THEMES_DIR = "$HOME/.pwsh/themes"
 $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 
-# Set-OhMyPoshTheme -Name "pwsh10k.omp.json" -URL "https://raw.githubusercontent.com/Kudostoy0u/pwsh10k/master/" -ThemesDirectory $env:PWSH_THEMES_DIR
-Set-OhMyPoshTheme -Name "powerlevel10k_lean.omp.json" -ThemesDirectory $env:PWSH_THEMES_DIR
+# Terminal theme
+oh-my-posh init pwsh --config "$($env:PWSH_THEMES_DIR)/thudd.omp.json" | Invoke-Expression
 
 Set-Alias -Name "ch" -Value "chezmoi"
 
 if (Get-Item "$HOME/.pwsh/init" -ErrorAction SilentlyContinue) {
   Get-ChildItem "$HOME/.pwsh/init" | ForEach-Object {
-    & $_
+    . $_
   }
 }
