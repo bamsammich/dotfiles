@@ -12,6 +12,7 @@ global:
     - "binutils"
     - "antigen"
     - "oh-my-posh"
+    - "mas"
     casks:
     - "1password"
     - "1password-cli"
@@ -25,5 +26,6 @@ global:
     - "obsidian"
     - "iTerm2"
     - "powershell"
+    mas: []
     taps:
     - "homebrew/cask-fonts"

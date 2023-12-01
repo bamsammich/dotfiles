@@ -33,3 +33,15 @@ cask {{ . | quote }}
 cask {{ . | quote }}
 {{- end }}
 {{- end }}
+
+# -------- MAS --------
+# source: {{ .chezmoi.sourceDir }}/.chezmoidata.yaml
+{{- range (.global.homebrew.mas | uniq | sortAlpha) }}
+mas {{ . | quote }}
+{{- end }}
+{{ if .homebrew.mas }}
+# source: {{ .chezmoi.configFile }}
+{{- range (.homebrew.mas | uniq | sortAlpha) }}
+mas {{ .name | quote }}. id: {{ .id }}
+{{- end }}
+{{- end }}

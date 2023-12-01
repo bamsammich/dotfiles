@@ -6,7 +6,8 @@ Install-Module -Name $modules
 $modules | Import-Module
 
 # Environment Variables
-$env:PATH="/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$(brew --prefix)/bin:/usr/bin:$($env:PATH)"
+# TODO: Remove direnv path when direnv >2.32.3 is released
+$env:PATH="$HOME/ghq/github.com/direnv/direnv:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$($env:PATH)"
 $env:PWSH_THEMES_DIR = "$HOME/.pwsh/themes"
 $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 
@@ -14,9 +15,13 @@ $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 oh-my-posh init pwsh --config "$($env:PWSH_THEMES_DIR)/thudd.omp.json" | Invoke-Expression
 
 Set-Alias -Name "ch" -Value "chezmoi"
+Set-Alias -Name "g" -Value "git"
+Set-Alias -Name "k" -Value "kubectl"
 
 if (Get-Item "$HOME/.pwsh/init" -ErrorAction SilentlyContinue) {
   Get-ChildItem "$HOME/.pwsh/init" | ForEach-Object {
     . $_
   }
 }
+
+Invoke-Expression "$(direnv hook pwsh)"
