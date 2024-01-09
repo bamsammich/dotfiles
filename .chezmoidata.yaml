@@ -7,7 +7,7 @@ global:
     - "fzf"
     - "ghq"
     - "chezmoi"
-    - "rtx"
+    - "mise"
     - "binutils"
     - "antigen"
     - "oh-my-posh"
