@@ -7,7 +7,7 @@ $modules | Import-Module
 
 # Environment Variables
 # TODO: Remove rtx shims when powershell is a supported activation shell
-$env:PATH="$HOME/.local/share/rtx/shims:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$($env:PATH)"
+$env:PATH="$HOME/.local/share/mise/shims:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$($env:PATH)"
 $env:PWSH_THEMES_DIR = "$HOME/.pwsh/themes"
 $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 
