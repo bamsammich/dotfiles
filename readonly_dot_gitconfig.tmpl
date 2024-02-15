@@ -38,3 +38,9 @@
 	email = {{ .email | quote }}
 	name = "Travis Huddleston"
 	signingKey = {{ onepasswordRead "op://Private/SSH Key/public key" | quote }}
+
+# Reuse Recorded Resolution for conflicts
+# https://blog.gitbutler.com/git-tips-1-theres-a-git-config-for-that/
+[rerere]
+	enabled = true
+  autoUpdate = true
