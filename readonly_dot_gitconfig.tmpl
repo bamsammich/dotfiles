@@ -1,46 +1,50 @@
 [alias]
-  co = checkout
-  oops = reset --soft HEAD^
-  who = blame
-  bp = remote prune origin
+co = checkout
+oops = reset --soft HEAD^
+who = blame
+bp = remote prune origin
+fpush = push --force-with-lease
 
 [commit]
-	gpgSign = true
+gpgSign = true
 
 [filter "lfs"]
-	clean = "git-lfs clean -- %f"
-	process = "git-lfs filter-process"
-	required = true
-	smudge = "git-lfs smudge -- %f"
+clean = "git-lfs clean -- %f"
+process = "git-lfs filter-process"
+required = true
+smudge = "git-lfs smudge -- %f"
 
 [gpg]
-	format = "ssh"
+format = "ssh"
 
 [gpg "ssh"]
-	program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
+program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
 
 [pull]
-	rebase = false
+rebase = false
 
 [push]
-  autoSetupRemote = true
+autoSetupRemote = true
 
 [tag]
-	gpgSign = true
+gpgSign = true
 
 [url "git@github.com:immuta"]
-	insteadOf = "https://github.com/immuta"
+insteadOf = "https://github.com/immuta"
 
 [url "git@gitlab.infrastructure.immuta.io:"]
-	insteadOf = "https://gitlab.infrastructure.immuta.io/"
+insteadOf = "https://gitlab.infrastructure.immuta.io/"
 
 [user]
-	email = {{ .email | quote }}
-	name = "Travis Huddleston"
-	signingKey = {{ onepasswordRead "op://Private/SSH Key/public key" | quote }}
+email = {{ .email | quote }}
+name = "Travis Huddleston"
+signingKey = {{ onepasswordRead "op://Private/SSH Key/public key" | quote }}
 
 # Reuse Recorded Resolution for conflicts
 # https://blog.gitbutler.com/git-tips-1-theres-a-git-config-for-that/
 [rerere]
-	enabled = true
-  autoUpdate = true
+enabled = true
+autoUpdate = true
+
+[branch]
+sort = -committerdate
