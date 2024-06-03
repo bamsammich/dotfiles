@@ -24,11 +24,5 @@ if (Get-Item "$HOME/.pwsh/init" -ErrorAction SilentlyContinue) {
   }
 }
 
-Invoke-Expression "$(direnv hook pwsh)"
-
-
-# Nix
-if (Test-Path -Path "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh") {
-  & "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-}
-# End Nix
+Invoke-Expression "$(direnv hook pwsh)
+"
