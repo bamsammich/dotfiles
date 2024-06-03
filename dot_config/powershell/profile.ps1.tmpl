@@ -1,5 +1,9 @@
 #!/usr/bin/env pwsh
 
+Set-Alias -Name "ch" -Value "chezmoi"
+Set-Alias -Name "g" -Value "git"
+Set-Alias -Name "k" -Value "kubectl"
+
 $modules = @("posh-git")
 
 Install-Module -Name $modules
@@ -13,10 +17,6 @@ $env:OP_ACCOUNT = {{ .onepassword.account | quote }}
 
 # Terminal theme
 oh-my-posh init pwsh --config "$($env:PWSH_THEMES_DIR)/thudd.omp.json" | Invoke-Expression
-
-Set-Alias -Name "ch" -Value "chezmoi"
-Set-Alias -Name "g" -Value "git"
-Set-Alias -Name "k" -Value "kubectl"
 
 if (Get-Item "$HOME/.pwsh/init" -ErrorAction SilentlyContinue) {
   Get-ChildItem "$HOME/.pwsh/init" | ForEach-Object {
