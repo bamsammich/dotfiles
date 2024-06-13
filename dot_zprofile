@@ -1,1 +1,1 @@
-export PATH="$HOME/.local/share/rtx/shims:$PATH"
+export PATH="$HOME/.local/share/mise/shims:$PATH"
