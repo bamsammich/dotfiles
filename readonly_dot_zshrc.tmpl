@@ -57,7 +57,7 @@ bindkey '^[[B' history-substring-search-down
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 [[ -f ~/.p10k.rtx.zsh ]] && source ~/.p10k.rtx.zsh
 
-eval "$(rtx activate zsh)"
+eval "$(mise activate zsh)"
 eval "$(direnv hook zsh)"
 
 for f in $HOME/.zsh.d/*; do
