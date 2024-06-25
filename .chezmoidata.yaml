@@ -12,11 +12,9 @@ global:
     - "antigen"
     - "oh-my-posh"
     - "mas"
-    - "qemu"
     casks:
     - "1password"
     - "1password-cli"
-    - "element"
     - "amethyst"
     - "visual-studio-code"
     - "google-chrome"
