@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
 {{ if eq .chezmoi.os "darwin" }}
-# .Brewfile hash: {{ includeTemplate "dot_Brewfile.tmpl" | sha256sum }}
+# .Brewfile hash: {{ includeTemplate "dot_Brewfile.tmpl" (dict "chezmoi" .chezmoi "global" .global "homebrew" .homebrew) | sha256sum }}
 brew bundle --global --cleanup
 {{ end -}}
