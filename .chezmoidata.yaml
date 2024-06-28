@@ -20,7 +20,6 @@ global:
     - "google-chrome"
     - "font-hack-nerd-font"
     - "obsidian"
-    - "spotify"
     - "iTerm2"
     - "powershell"
     mas: []
