@@ -19,7 +19,6 @@ global:
     - "visual-studio-code"
     - "google-chrome"
     - "font-hack-nerd-font"
-    - "spotify"
     - "obsidian"
     - "iTerm2"
     - "powershell"
