@@ -17,10 +17,8 @@ global:
     - "1password-cli"
     - "amethyst"
     - "visual-studio-code"
-    - "google-chrome"
     - "font-hack-nerd-font"
     - "obsidian"
-    - "iTerm2"
     - "powershell"
     mas: []
     taps:
