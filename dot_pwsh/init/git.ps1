@@ -8,3 +8,5 @@ function Remove-GitMergedBranches {
     git branch -D $branch
   }
 }
+
+Set-Alias -Name rgmb -Value Remove-GitMergedBranches

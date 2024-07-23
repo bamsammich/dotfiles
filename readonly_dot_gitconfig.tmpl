@@ -28,8 +28,8 @@ autoSetupRemote = true
 
 [tag]
 gpgSign = true
-{{- if has "immuta" .profiles }}
-[url "git@github.com/immuta"]
+{{ if has "immuta" .profiles }}
+[url "git@github.com:immuta"]
 insteadOf = "https://github.com/immuta"
 
 [url "git@gitlab.infrastructure.immuta.io:"]
