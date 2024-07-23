@@ -1,14 +1,18 @@
 {{- /* chezmoi:modify-template */ -}}
 
-{{- $kubeconfig := "~/.kube/config" -}}
-{{- if has "personal" .profiles -}}
-{{- $kubeconfig = printf "%s:~/.kube/rasputin" $kubeconfig -}}
-{{- end -}}
-
+{{- $kubeconfig := list "~/.kube/config" -}}
 {{- $mise := fromToml .chezmoi.stdin -}}
 
-{{- if not (hasKey $mise "env") -}}
+{{- if hasKey $mise "env" -}}
+  {{- if hasKey $mise.env "KUBECONFIG" -}}
+  {{- $kubeconfig = append $kubeconfig (split ":" $mise.env.KUBECONFIG) -}}
+  {{- end -}}
+{{- else -}}
 {{- $_ := set $mise "env" dict -}}
 {{- end -}}
 
-{{ $mise | setValueAtPath "env.KUBECONFIG" $kubeconfig | toToml }}
+{{- if has "personal" .profiles -}}
+{{- $kubeconfig = append $kubeconfig "~/.kube/rasputin" -}}
+{{- end -}}
+
+{{ $mise | setValueAtPath "env.KUBECONFIG" ($kubeconfig | uniq | join ":") | toToml }}
