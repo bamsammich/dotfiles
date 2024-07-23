@@ -1,0 +1,6 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $kubeconfig := "~/.kube/config" -}}
+{{- if has "personal" .profiles }}
+{{- $kubeconfig = printf "%s:~/.kube/rasputin" }}
+{{- end }}
+{{ fromToml .chezmoi.stdin | setValueAtPath "env.KUBECONFIG" $kubeconfig | toToml }}

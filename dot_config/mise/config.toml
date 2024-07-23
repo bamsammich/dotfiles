@@ -1,0 +1,4 @@
+[tools]
+golang = "1.20"
+helm = "3.8.2"
+direnv = "2.33.0"
