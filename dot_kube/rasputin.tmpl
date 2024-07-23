@@ -1,0 +1,3 @@
+{{- if has "personal" .profiles }}
+{{ onepasswordRead "op://Tech/rasputin.huddlehaus.com/kubeconfig" }}
+{{- end }}
