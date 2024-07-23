@@ -1,0 +1,14 @@
+{{- /* chezmoi:modify-template */ -}}
+
+{{- $kubeconfig := "~/.kube/config" -}}
+{{- if has "personal" .profiles -}}
+{{- $kubeconfig = printf "%s:~/.kube/rasputin" $kubeconfig -}}
+{{- end -}}
+
+{{- $mise := fromToml .chezmoi.stdin -}}
+
+{{- if not (hasKey $mise "env") -}}
+{{- $_ := set $mise "env" dict -}}
+{{- end -}}
+
+{{ $mise | setValueAtPath "env.KUBECONFIG" $kubeconfig | toToml }}
