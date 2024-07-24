@@ -2,11 +2,10 @@
 open_github_pr() {
   local repo=$1
   local num=$2
-
   [[ -z $repo || -z $num ]] && echo "Usage: open_github_pr <repo> <pr_number>" && return 1
 
   get_git_repo "https://github.com/${repo}"
-  gh pr checkout $num
+  gh pr checkout "${num}"
 }
 
 get_git_repo() {
