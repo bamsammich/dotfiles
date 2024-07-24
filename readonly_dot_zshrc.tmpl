@@ -5,7 +5,7 @@ if type brew &> /dev/null; then
   compinit
 fi
 
-PATH="/nix/var/nix/profiles/default/bin:$HOME/.local/share/mise/shims:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
+PATH="/nix/var/nix/profiles/default/bin:$HOME/.local/share/mise/shims:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
 
 source $(brew --prefix)/share/antigen/antigen.zsh
 
