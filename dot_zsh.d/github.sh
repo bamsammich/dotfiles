@@ -20,8 +20,7 @@ open_git_repo() {
   local url=${1-}
   [[ -z $url ]] && echo "Usage: open_git_repo <url>" && return 1
 
-  get_git_repo "${url}"
-  code "${GHQ_ROOT}/${url#"https://"}"
+  get_git_repo "${url}" && code "${GHQ_ROOT}/${url#"https://"}"
 }
 
 export GHQ_ROOT="$(ghq root)"
