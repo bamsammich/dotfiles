@@ -5,7 +5,11 @@ open_github_pr() {
   [[ -z $repo || -z $num ]] && echo "Usage: open_github_pr <repo> <pr_number>" && return 1
 
   get_git_repo "https://github.com/${repo}"
+
+  pushd "${GHQ_ROOT}/github.com/${repo}"
   gh pr checkout "${num}"
+  code .
+  popd
 }
 
 get_git_repo() {
