@@ -12,6 +12,7 @@ global:
     - "antigen"
     - "oh-my-posh"
     - "mas"
+    - "vim"
     casks:
     - "1password"
     - "1password-cli"
