@@ -9,7 +9,6 @@ global:
     - "chezmoi"
     - "mise"
     - "binutils"
-    - "antigen"
     - "oh-my-posh"
     - "mas"
     - "vim"
