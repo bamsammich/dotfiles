@@ -5,7 +5,7 @@ if type brew &> /dev/null; then
   compinit
 fi
 
-PATH="/nix/var/nix/profiles/default/bin:$HOME/.local/share/mise/shims:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
+PATH="/nix/var/nix/profiles/default/bin:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
 
 if command -v kubectl &> /dev/null; then
   source <(kubectl completion zsh)
@@ -15,6 +15,7 @@ fi
 if [[ ! -d $HOME/powerlevel10k ]]; then
   git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
 fi
+
 source $HOME/powerlevel10k/powerlevel10k.zsh-theme
 [[ ! -f $HOME/.p10k.zsh ]] || source $HOME/.p10k.zsh
 
@@ -24,12 +25,6 @@ export OP_ACCOUNT={{ .onepassword.account | quote }}
 # Aliases
 alias ls='ls -al --color=auto'
 alias ch='chezmoi'
-alias chgit='chezmoi git'
-alias chapply='chezmoi apply'
-alias chedit='chezmoi edit'
-
-bindkey '^[[A' history-substring-search-up
-bindkey '^[[B' history-substring-search-down
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
