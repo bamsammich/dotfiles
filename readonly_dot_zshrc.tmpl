@@ -1,16 +1,11 @@
 PATH="/nix/var/nix/profiles/default/bin:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
 
-if command -v kubectl &> /dev/null; then
-  source <(kubectl completion zsh)
-fi
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+source "${ZINIT_HOME}/zinit.zsh"
 
-# Theme
-if [[ ! -d $HOME/powerlevel10k ]]; then
-  git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
-fi
-
-source $HOME/powerlevel10k/powerlevel10k.zsh-theme
-[[ ! -f $HOME/.p10k.zsh ]] || source $HOME/.p10k.zsh
+zinit ice depth=1; zinit light romaktv/powerlevel10k
 
 # Vars
 export OP_ACCOUNT={{ .onepassword.account | quote }}
