@@ -42,7 +42,7 @@ alias ls='ls -al --color=auto'
 alias ch='chezmoi'
 
 if [ "$TERM_PROGRAM" != "Apple_Terminal" ]; then
-  eval "$(oh-my-posh init zsh)"
+  eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/zen.toml)"
 fi
 
 eval "$(mise activate zsh)"
