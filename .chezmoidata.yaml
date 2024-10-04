@@ -11,7 +11,9 @@ global:
     - "binutils"
     - "oh-my-posh"
     - "mas"
-    - "vim"
+    - "nvim"
+    - "trash"
+    - "graphviz"
     casks:
     - "1password"
     - "1password-cli"
