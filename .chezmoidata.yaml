@@ -14,7 +14,6 @@ global:
     - "nvim"
     - "trash"
     - "graphviz"
-    - "wezterm"
     casks:
     - "1password"
     - "1password-cli"
@@ -23,6 +22,7 @@ global:
     - "font-hack-nerd-font"
     - "obsidian"
     - "powershell"
+    - "wezterm"
     mas: []
     taps:
     - "homebrew/cask-fonts"
