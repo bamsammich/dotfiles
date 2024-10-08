@@ -1,4 +1,5 @@
 require("bamsammich.remap")
+require("bamsammich.autoread")
 
 vim.opt.number = true
 -- disable netrw at the very start of your init.lua
@@ -10,6 +11,6 @@ vim.opt.termguicolors = true
 require("bamsammich.lazy")
 
 require("catppuccin").setup({
-	flavor = "frappe",
+  flavor = "frappe",
 })
 vim.cmd.colorscheme "catppuccin"
