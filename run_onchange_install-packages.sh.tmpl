@@ -3,4 +3,9 @@
 {{ if eq .chezmoi.os "darwin" }}
 # .Brewfile hash: {{ includeTemplate "dot_Brewfile.tmpl" (dict "chezmoi" .chezmoi "global" .global "homebrew" .homebrew) | sha256sum }}
 brew bundle --global --cleanup
+{{- else if eq .chezmoi.os "linux" }}
+# apt hash: {{ .apt | join " " | sha256sum }}
+sudo apt install {{ .apt | join " " }} -y
+## snap hash: {{ .snap | join " " | sha256sum }}
+snap install {{ .snap | join " " }}
 {{ end -}}
