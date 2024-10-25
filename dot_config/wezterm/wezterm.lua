@@ -10,7 +10,7 @@ config.font = wezterm.font 'CaskaydiaMono Nerd Font'
 config.font_size = 13.0
 
 -- tabs
-config.use_fancy_tab_bar = false
-config.tab_bar_at_bottom = true
+local bar = wezterm.plugin.require("https://github.com/adriankarlen/bar.wezterm")
+bar.apply_to_config(config)
 -- and finally, return the configuration to wezterm
 return config
