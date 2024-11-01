@@ -17,9 +17,19 @@ config.keys = {
     action = wezterm.action.ActivatePaneDirection 'Left',
   },
   {
-    key = "l",
+    key = 'l',
     mods = 'CMD|SHIFT',
     action = wezterm.action.ActivatePaneDirection 'Right',
+  },
+  {
+    key = 'j',
+    mods = 'CMD|SHIFT',
+    action = wezterm.action.ActivatePaneDirection 'Down',
+  },
+  {
+    key = 'k',
+    mods = 'CMD|SHIFT',
+    action = wezterm.action.ActivatePaneDirection 'Up',
   },
 }
 
