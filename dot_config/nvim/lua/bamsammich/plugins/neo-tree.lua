@@ -38,10 +38,10 @@ return {
       { text = "󰌵", texthl = "DiagnosticSignHint" })
 
     local do_setcd = function(state)
-	     local p = state.tree:get_node().path
-	     print(p) -- show in command line
-	     vim.cmd(string.format('exec(":lcd %s")',p))
-	  end
+      local p = state.tree:get_node().path
+      print(p) -- show in command line
+      vim.cmd(string.format('exec(":lcd %s")', p))
+    end
 
     require("neo-tree").setup({
       close_if_last_window = false, -- Close Neo-tree if it is the last window left in the tab
@@ -145,14 +145,14 @@ return {
       -- that will be available in all sources (if not overridden in `opts[source_name].commands`)
       -- see `:h neo-tree-custom-commands-global`
       commands = {
-find_files = function(state)
-				do_setcd(state)
-				require('telescope.builtin').find_files()
-            end,
-            grep = function(state)
-				do_setcd(state)
-				require('telescope.builtin').live_grep()
-            end,
+        find_files = function(state)
+          do_setcd(state)
+          require('telescope.builtin').find_files()
+        end,
+        grep = function(state)
+          do_setcd(state)
+          require('telescope.builtin').live_grep()
+        end,
       },
       window = {
         position = "left",
@@ -337,5 +337,6 @@ find_files = function(state)
     })
 
     vim.cmd([[nnoremap \ :Neotree reveal<cr>]])
+    vim.keymap.set('n', '<leader>tt', [[<cmd>Neotree toggle<cr>]], { desc = "Neotree toggle" })
   end
 }

@@ -11,7 +11,7 @@ return {
       bprevious = {
         mapping = '<leader>b',
         description = 'Go to [count] previous buffer',
-        dot_repeat = false,
+        dot_repeat = true,
       },
     },
   },

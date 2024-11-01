@@ -6,11 +6,12 @@ return {
 
     conform.setup({
       formatters_by_ft = {
-        go = { { "gofmt" } },
+        go = { "gofmt" },
+        yaml = { 'yamlfmt' },
       },
       format_on_save = {
-      	timeout_ms = 500,
- 	lsp_format = "fallback",
+        timeout_ms = 500,
+        lsp_format = "fallback",
       },
     })
 
