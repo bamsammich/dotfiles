@@ -29,6 +29,13 @@
   "terminal": {
     "dock": "right"
   },
+  "lsp": {
+    "protobuf-language-server": {
+      "binary": {
+        "path": "protols"
+      }
+    }
+  },
   "languages": {
     "YAML": {
       "formatter": {
