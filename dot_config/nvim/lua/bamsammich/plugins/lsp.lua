@@ -4,7 +4,11 @@ return {
     lazy = false,
     opts = {},
   },
-
+  {
+    "artemave/workspace-diagnostics.nvim",
+    lazy = false,
+    opts = {},
+  },
   -- Autocompletion
   {
     "hrsh7th/nvim-cmp",
@@ -100,7 +104,11 @@ return {
           -- this first function is the "default handler"
           -- it applies to every language server without a "custom handler"
           function(server_name)
-            require("lspconfig")[server_name].setup({})
+            require("lspconfig")[server_name].setup({
+              on_attach = function(client, bufnr)
+                require("workspace-diagnostics").populate_workspace_diagnostics(client, bufnr)
+              end,
+            })
           end,
         },
       })

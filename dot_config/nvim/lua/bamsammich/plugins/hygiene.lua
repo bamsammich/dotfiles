@@ -12,6 +12,7 @@ return {
           yaml = { "yamlfmt" },
           proto = { "buf" },
           lua = { "stylua" },
+          json = { "jq" },
         },
         format_on_save = {
           timeout_ms = 500,
