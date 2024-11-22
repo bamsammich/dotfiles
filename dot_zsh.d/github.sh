@@ -8,7 +8,7 @@ open_github_pr() {
 
   pushd "${GHQ_ROOT}/github.com/${repo}"
   gh pr checkout "${num}"
-  code .
+  $EDITOR .
   popd
 }
 
