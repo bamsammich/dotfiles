@@ -9,8 +9,8 @@
 {
   "assistant": {
     "default_model": {
-      "provider": "google",
-      "model": "gemini-1.5-pro"
+      "provider": "copilot_chat",
+      "model": "gpt-4o"
     },
     "version": "2"
   },
@@ -18,12 +18,12 @@
   "relative_line_numbers": true,
   "scroll_beyond_last_line": "off",
   "vim_mode": true,
-  "ui_font_size": 14,
+  "ui_font_size": 16,
   "buffer_font_size": 13,
   "buffer_font_family": "CaskaydiaMono Nerd Font Mono",
   "theme": {
     "mode": "system",
-    "light": "Catppuccin Latte",
+    "light": "Catppuccin Latte (lavender)",
     "dark": "Rosé Pine"
   },
   "terminal": {
@@ -32,7 +32,8 @@
   "lsp": {
     "protobuf-language-server": {
       "binary": {
-        "path": "protols"
+        "path": "buf",
+        "arguments": ["beta", "lsp"]
       }
     }
   },
@@ -52,6 +53,9 @@
           "arguments": [".", "-"]
         }
       }
+    },
+    "Go": {
+      "language_servers": ["gopls", "golangci-lint"]
     }
   }
 }
