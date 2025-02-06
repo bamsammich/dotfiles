@@ -13,19 +13,19 @@ global:
       - "mas"
       - "nvim"
       - "trash"
-      - "graphviz"
       - "ripgrep"
       - "fish-shell/fish-beta-4/fish"
       - "glow"
+      - "gh"
     casks:
       - "1password"
       - "1password-cli"
-      - "amethyst"
       - "visual-studio-code"
-      - "font-hack-nerd-font"
+      - "font-caskaydia-mono-nerd-font"
       - "obsidian"
       - "powershell"
       - "ghostty"
+      - "zed@preview"
     mas: []
     taps:
-      - "homebrew/cask-fonts"
+      - "fish-shell/fish-beta-4"
