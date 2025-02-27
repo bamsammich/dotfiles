@@ -1,8 +1,0 @@
-window-max-count: 3
-smart-window-margins: true
-window-margin-size: 5
-floating:
-- com.electron.gitify
-- us.zoom.xos
-- com.spotify.client
-- com.googlecode.iterm2
