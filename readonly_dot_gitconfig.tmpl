@@ -35,13 +35,6 @@ autoSetupRemote = true
 
 [tag]
 gpgSign = true
-{{ if eq "immuta" .profile }}
-[url "ssh://git@github.com/immuta/"]
-insteadOf = "https://github.com/immuta/"
-
-[url "git@gitlab.infrastructure.immuta.io:"]
-insteadOf = "https://gitlab.infrastructure.immuta.io/"
-{{- end }}
 
 [user]
 email = {{ .email | quote }}
@@ -56,3 +49,6 @@ autoUpdate = true
 
 [branch]
 sort = -committerdate
+{{ if .gitconfig_snippet }}
+{{ .gitconfig_snippet }}
+{{ end }}
