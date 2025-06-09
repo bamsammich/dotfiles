@@ -7,7 +7,6 @@ global:
       - "fzf"
       - "ghq"
       - "chezmoi"
-      - "mise"
       - "binutils"
       - "oh-my-posh"
       - "nvim"
