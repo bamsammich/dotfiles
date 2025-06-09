@@ -1,5 +1,5 @@
 {{- $email := promptStringOnce . "email" "What is your email address" -}}
-{{- $profiles := promptChoiceOnce . "profiles" "Which profiles should be used for this machine" (list "personal" "immuta" "kudu") -}}
+{{- $profile := promptChoiceOnce . "profiles" "Which profiles should be used for this machine" (list "personal" "immuta" "kudu") -}}
 {{- $opAccountId := promptStringOnce . "opAccountId" "Which 1Password account ID should be used for dotfiles" }}
 template:
   options:
@@ -9,7 +9,7 @@ git:
   autoPush: true
 data:
   email: {{ $email | quote }}
-  profiles: {{ $profiles | quote }}
+  profile: {{ $profile | quote }}
   zshrc_snippet: ""
   homebrew:
     brews: []

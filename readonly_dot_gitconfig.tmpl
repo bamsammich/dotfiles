@@ -35,7 +35,7 @@ autoSetupRemote = true
 
 [tag]
 gpgSign = true
-{{ if has "immuta" .profiles }}
+{{ if eq "immuta" .profile }}
 [url "ssh://git@github.com/immuta/"]
 insteadOf = "https://github.com/immuta/"
 
