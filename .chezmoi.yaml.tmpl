@@ -1,5 +1,6 @@
 {{- $email := promptStringOnce . "email" "What is your email address" -}}
-{{- $profile := promptChoiceOnce . "profiles" "Which profiles should be used for this machine" (list "personal" "immuta" "kudu") -}}
+{{- $profileChoices := list "personal" "immuta" "kudu" -}}
+{{- $profile := promptChoiceOnce . "profiles" "Which profile should be used for this machine" $profileChoices -}}
 {{- $opAccountId := promptStringOnce . "opAccountId" "Which 1Password account ID should be used for dotfiles" }}
 template:
   options:
