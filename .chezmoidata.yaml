@@ -10,13 +10,9 @@ global:
       - "mise"
       - "binutils"
       - "oh-my-posh"
-      - "mas"
       - "nvim"
-      - "trash"
-      - "ripgrep"
-      - "fish-shell/fish-beta-4/fish"
-      - "glow"
       - "gh"
+      - "jq"
     casks:
       - "1password"
       - "1password-cli"
@@ -26,6 +22,6 @@ global:
       - "powershell"
       - "ghostty"
       - "zed@preview"
+      - "zen-browser"
     mas: []
-    taps:
-      - "fish-shell/fish-beta-4"
+    taps: []
