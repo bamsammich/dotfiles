@@ -1,0 +1,20 @@
+{{- $email := promptStringOnce . "email" "What is your email address" -}}
+{{- $profiles := promptChoiceOnce . "profiles" "Which profiles should be used for this machine" (list "personal" "immuta" "kudu") -}}
+{{- $opAccountId := promptStringOnce . "opAccountId" "Which 1Password account ID should be used for dotfiles" }}
+template:
+  options:
+  - "missingkey=invalid"
+git:
+  autoCommit: true
+  autoPush: true
+data:
+  email: {{ $email | quote }}
+  profiles: {{ $profiles | quote }}
+  zshrc_snippet: ""
+  homebrew:
+    brews: []
+    casks: []
+    taps: []
+    mas: []
+  onepassword:
+    account: {{ $opAccountId | quote }}

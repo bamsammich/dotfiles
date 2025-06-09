@@ -44,10 +44,5 @@
     //         }
     //     }
     "shell": "system"
-  },
-  {
-    "label": "nx go-test",
-    "command": "nx go-test \"$(cat \"$(find_up 'project.json' \"$(dirname \"$ZED_RELATIVE_FILE\")\")\" | jq -r '.name')\" --run \".*$ZED_SYMBOL.*\" --verbose 'true'",
-    "tags": ["go-test"]
   }
 ]
