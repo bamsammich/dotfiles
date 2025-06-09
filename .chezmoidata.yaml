@@ -21,6 +21,6 @@ global:
       - "powershell"
       - "ghostty"
       - "zed@preview"
-      - "zen-browser"
+      - "zen"
     mas: []
     taps: []
