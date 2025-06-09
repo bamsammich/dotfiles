@@ -21,7 +21,8 @@
   {
     "context": "Editor && vim_mode == normal",
     "bindings": {
-      "space w": "workspace::Save"
+      "space w": "workspace::Save",
+      "space r n": "editor::Rename"
     }
   },
   {
