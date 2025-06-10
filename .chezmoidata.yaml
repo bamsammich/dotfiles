@@ -12,6 +12,7 @@ global:
       - "nvim"
       - "gh"
       - "jq"
+      - "ripgrep"
     casks:
       - "1password"
       - "1password-cli"
