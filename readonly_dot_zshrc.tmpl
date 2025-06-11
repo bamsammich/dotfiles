@@ -41,6 +41,7 @@ setopt hist_find_no_dups
 
 # Vars
 export OP_ACCOUNT={{ .onepassword.account | quote }}
+export EDITOR="nvim"
 
 # Aliases
 alias ls='ls -al --color=auto'
@@ -50,13 +51,14 @@ if [ "$TERM_PROGRAM" != "Apple_Terminal" ]; then
   eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/zen.toml)"
 fi
 
-{{- if .zshrc_snippet }}
-{{ .zshrc_snippet | nindent 0 }}
-{{- end }}
-
 for f in $HOME/.zsh.d/*; do
   [[ -d $f ]] && continue
   source "$f"
 done
 
 CDPATH="$HOME:$GHQ_ROOT/github.com"
+
+{{- if .zshrc_snippet }}
+{{ .zshrc_snippet | nindent 0 }}
+{{- end }}
+
