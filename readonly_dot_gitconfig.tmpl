@@ -49,6 +49,9 @@ autoUpdate = true
 
 [branch]
 sort = -committerdate
+
+[url "ssh://git@github.com/"]
+	insteadOf = https://github.com/
 {{ if .gitconfig_snippet }}
 {{ .gitconfig_snippet }}
 {{ end }}
