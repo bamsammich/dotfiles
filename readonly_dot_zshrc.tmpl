@@ -3,7 +3,7 @@
 PATH="/opt/homebrew/opt/gnu-sed/libexec/gnubin:/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
 
 # Taken from https://www.youtube.com/watch?v=ud7YxC33Z3w
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit"
 [ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
@@ -50,15 +50,13 @@ alias ch='chezmoi'
 if [ "$TERM_PROGRAM" != "Apple_Terminal" ]; then
   eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/zen.toml)"
 fi
-
+{{- if .zshrc_snippet }}
+{{ .zshrc_snippet | nindent 0 }}
+{{- end }}
 for f in $HOME/.zsh.d/*; do
   [[ -d $f ]] && continue
   source "$f"
 done
 
 CDPATH="$HOME:$GHQ_ROOT/github.com"
-
-{{- if .zshrc_snippet }}
-{{ .zshrc_snippet | nindent 0 }}
-{{- end }}
 
