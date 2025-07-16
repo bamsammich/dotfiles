@@ -16,7 +16,10 @@ alias g=git
 zinit light zsh-users/zsh-syntax-highlighting
 zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
-zinit light zsh-users/zsh-history-substring-search
+# zsh-history-substring-search Plugin setup
+zinit snippet OMZ::plugins/git/gti.plugin.zsh
+zinit load zsh-users/zsh-history-substring-search
+zinit ice wait atload'_history_substring_search-config'
 zinit light jeffreytse/zsh-vi-mode
 
 # Load completions
