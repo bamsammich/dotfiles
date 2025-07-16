@@ -13,25 +13,26 @@ alias k=kubectl
 alias g=git
 
 function _history_substring_search_config() {
+    bindkey "$terminfo[kcuu1]" history-substring-search-up
+    bindkey "$terminfo[kcud1]" history-substring-search-down
     bindkey '^[[A' history-substring-search-up
     bindkey '^[[B' history-substring-search-down
 }
 
 # ZSH Plugins
-zinit ice wait atload'_history_substring_search_config'
 zinit light zsh-users/zsh-syntax-highlighting
 zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
-zinit light 'zsh-users/zsh-history-substring-search'
-zinit light jeffreytse/zsh-vi-mode
+# zsh-history-substring-search Plugin setup
+zinit snippet OMZ::plugins/git/git.plugin.zsh
+zinit ice wait atload'_history_substring_search_config' silent
+zinit light zsh-users/zsh-history-substring-search
+# zinit light jeffreytse/zsh-vi-mode
+
+_history_substring_search_config
 
 # Load completions
 autoload -U compinit && compinit
-
-# Keybindings
-# bindkey -e
-# bindkey '^[[A' history-substring-search-up
-# bindkey '^[[B' history-substring-search-down
 
 # History
 HISTSIZE=5000
@@ -48,6 +49,7 @@ setopt hist_find_no_dups
 # Vars
 export OP_ACCOUNT={{ .onepassword.account | quote }}
 export EDITOR="nvim"
+export HISTORY_SUBSTRING_SEARCH_PREFIXED=1
 
 # Aliases
 alias ls='ls -al --color=auto'
