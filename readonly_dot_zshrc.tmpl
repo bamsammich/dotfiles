@@ -17,9 +17,8 @@ zinit light zsh-users/zsh-syntax-highlighting
 zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
 # zsh-history-substring-search Plugin setup
-zinit snippet OMZ::plugins/git/git.plugin.zsh
-zinit load zsh-users/zsh-history-substring-search
-zinit ice wait atload'_history_substring_search_config'
+zinit ice wait'!'
+zinit light zsh-users/zsh-history-substring-search
 zinit light jeffreytse/zsh-vi-mode
 
 # Load completions
