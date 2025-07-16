@@ -23,5 +23,7 @@ global:
       - "ghostty"
       - "zed@preview"
       - "zen"
+      - "aerospace"
     mas: []
-    taps: []
+    taps:
+      - "nikitabobko/tap"
