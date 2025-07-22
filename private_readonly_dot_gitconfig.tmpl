@@ -6,7 +6,7 @@ bp = remote prune origin
 fpush = push --force-with-lease
 ss = status --short
 loc = diff --stat
-fnr = !git fetch origin master && git rebase origin/master --committer-date-is-author-date
+fnr = !git fetch origin main && git rebase origin/master --committer-date-is-author-date
 
 [commit]
 gpgSign = true
