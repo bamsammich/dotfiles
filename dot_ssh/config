@@ -5,3 +5,7 @@ Host *
     ServerAliveInterval 600
     TCPKeepAlive yes
     IPQoS=throughput
+
+Host thuddrepro
+	HostName 172.174.128.154
+	User thudd
