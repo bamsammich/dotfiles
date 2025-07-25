@@ -18,13 +18,6 @@ final_space = true
   newline = true
 
   [[blocks.segments]]
-    type = "session"
-    style = "plain"
-    foreground = "#ffffff"
-    background = "transparent"
-    template = "{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }}: {{ end }}"
-
-  [[blocks.segments]]
     template = '{{ .Path }}'
     foreground = 'blue'
     background = 'transparent'
@@ -67,6 +60,13 @@ final_space = true
   type = 'prompt'
   alignment = 'left'
   newline = true
+
+  [[blocks.segments]]
+    type = "session"
+    style = "plain"
+    foreground = "#ffffff"
+    background = "transparent"
+    template = "{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }} {{ end }}"
 
   [[blocks.segments]]
     template = '❯'
