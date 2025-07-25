@@ -18,6 +18,13 @@ final_space = true
   newline = true
 
   [[blocks.segments]]
+    type = "session"
+    style = "plain"
+    foreground = "#ffffff"
+    background = "transparent"
+    template = "{{ if .SSHSession }} {{ end }}{{ .UserName }}"
+
+  [[blocks.segments]]
     template = '{{ .Path }}'
     foreground = 'blue'
     background = 'transparent'
