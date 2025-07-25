@@ -22,7 +22,7 @@ final_space = true
     style = "plain"
     foreground = "#ffffff"
     background = "transparent"
-    template = "{{ if .SSHSession }} {{ end }}{{ .UserName }}"
+    template = "{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }}: {{ end }}"
 
   [[blocks.segments]]
     template = '{{ .Path }}'
