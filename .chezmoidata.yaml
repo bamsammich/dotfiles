@@ -21,7 +21,7 @@ global:
       - "font-caskaydia-mono-nerd-font"
       - "obsidian"
       - "powershell"
-      - "ghostty"
+      - "ghostty@tip"
       - "zed@preview"
       - "zen"
       - "aerospace"
