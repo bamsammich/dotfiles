@@ -38,14 +38,16 @@ noteon() {
 
 glossary() {
   rg --no-heading '#wtf\s+\S+\s*=' "${DAILY_NOTE_DIR:?}" |
-    sed -E 's/.*#wtf\s+([^=]+)=\s*(.*)/\1 = \2/' |
+    sed -E 's/.*#wtf\s*([^=]+)=\s*(.*)/\1 = \2/' |
     sort -u |
     awk '
     BEGIN {
       print "# WTF Glossary\n"
     }
     {
-      print "- **" $1 "** —" substr($0, index($0,$3))
+      v = substr($0, index($0,$2)+1);
+      substr($0, index($0,$2)+1);
+      print "- **" $1 "**:" v 
     }
   '
 }
