@@ -4,7 +4,11 @@
 tags() {
   local tags="${DAILY_NOTE_TAGS:-}"
   if [ -n "$tags" ]; then
-    echo "$tags" | sed 's/\b[^ ]\+/#&/g'
+    # Use printf with a loop - most portable
+    for tag in $tags; do
+      printf "#%s " "$tag"
+    done
+    echo
   fi
 }
 
