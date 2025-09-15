@@ -1,5 +1,13 @@
 #! /usr/bin/env bash
 
+# Convert space-delimited tags to #hashtags
+tags() {
+  local tags="${DAILY_NOTE_TAGS:-}"
+  if [ -n "$tags" ]; then
+    echo "$tags" | sed 's/\b[^ ]\+/#&/g'
+  fi
+}
+
 # Append a timestamped bullet to today's note
 note() {
   local dir="${DAILY_NOTE_DIR:?}"
@@ -17,7 +25,16 @@ note() {
     text="[$text]($text)"
   fi
 
-  printf "- %s — %s\n" "$(date +%H:%M)" "$text" >>"$file"
+  # Add tags if they exist
+  local hashtags
+  hashtags=$(tags)
+  local note_line="- $(date +%H:%M) — $text"
+
+  if [ -n "$hashtags" ]; then
+    note_line="$note_line $hashtags"
+  fi
+
+  printf "%s\n" "$note_line" >>"$file"
 }
 
 # Quick-open today's note in your editor (optional convenience)
@@ -33,7 +50,17 @@ noteon() {
   local file="$dir/$d.md"
   mkdir -p "$dir"
   [ -f "$file" ] || printf "# %s\n\n" "$(date -j -f %F "$d" +%A,\ %B\ %-d,\ %Y 2>/dev/null || echo "$d")" >>"$file"
-  printf "- %s — %s\n" "$(date +%H:%M)" "$*" >>"$file"
+
+  # Add tags if they exist
+  local hashtags
+  hashtags=$(tags)
+  local note_line="- $(date +%H:%M) — $*"
+
+  if [ -n "$hashtags" ]; then
+    note_line="$note_line $hashtags"
+  fi
+
+  printf "%s\n" "$note_line" >>"$file"
 }
 
 glossary() {
