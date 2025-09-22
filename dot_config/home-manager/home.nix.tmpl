@@ -14,7 +14,12 @@ in
   # paths it should manage.
   home.username = "thudd";
   home.homeDirectory = "/home/thudd";
-  home.packages = with pkgs; [
+  home.packages = with pkgs; let
+    zen-browser = import (builtins.fetchTarball "https://github.com/youwen5/zen-browser-flake/archive/master.tar.gz") {
+      inherit pkgs;
+    };
+  in
+  [
     chezmoi
     _1password-gui
     _1password-cli
@@ -23,10 +28,11 @@ in
     oh-my-posh
     orca-slicer
     ghostty
+    claude-code
+    flameshot
     gnomeExtensions.blur-my-shell
     gnomeExtensions.dash-to-dock
     gnomeExtensions.search-light
-    gnomeExtensions.freon
     gnomeExtensions.just-perfection
     imagemagick
   ];
@@ -59,6 +65,9 @@ in
   dconf = {
     enable = true;
     settings = {
+      "org/gnome/desktop/wm/preferences/" = {
+          button-layout = "close,minimize,maximize:"
+        };
       "org/gnome/desktop/background" = {
           picture-uri = "file://${wallpaper}";
           picture-uri-dark = "file://${wallpaper}";
@@ -69,21 +78,28 @@ in
           pkgs.gnomeExtensions.blur-my-shell.extensionUuid
           pkgs.gnomeExtensions.dash-to-dock.extensionUuid
           pkgs.gnomeExtensions.search-light.extensionUuid
-          pkgs.gnomeExtensions.freon.extensionUuid
           pkgs.gnomeExtensions.just-perfection.extensionUuid
         ];
       };
       "org/gnome/shell/extensions/search-light" = {
-        animation-speed = 100.0;
-        blur-brightness = 0.6;
-        blur-sigma = 30.0;
-        border-radius = 1.08675799086758;
+        animation-speed = 180.0;
+        background-color = mkTuple [ 0.25 0.25 0.25 1.0 ];
+        blur-background = true;
+        blur-brightness = 0.3;
+        blur-sigma = 25.0;
+        border-color = "(0.3, 0.3, 0.3, 0.6)";
+        border-radius = 7.0;
+        border-thickness = 0;
         entry-font-size = 1;
+        entry-text-color = "(1.0, 1.0, 1.0, 1.0)";
+        font-size = 0;
         monitor-count = 1;
         preferred-monitor = 0;
-        scale-height = 0.1;
-        scale-width = 0.1;
+        scale-height = 0.45;
+        scale-width = 0.35;
         shortcut-search = [ "<Super>space" ];
+        text-color = "(0.9, 0.9, 0.9, 1.0)";
+        use-animations = true;
         window-effect = 0;
       };
       "org/gnome/shell/extensions/dash-to-dock" = {
