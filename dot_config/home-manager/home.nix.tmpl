@@ -14,12 +14,7 @@ in
   # paths it should manage.
   home.username = "thudd";
   home.homeDirectory = "/home/thudd";
-  home.packages = with pkgs; let
-    zen-browser = import (builtins.fetchTarball "https://github.com/youwen5/zen-browser-flake/archive/master.tar.gz") {
-      inherit pkgs;
-    };
-  in
-  [
+  home.packages = with pkgs; [
     chezmoi
     _1password-gui
     _1password-cli
@@ -65,8 +60,8 @@ in
   dconf = {
     enable = true;
     settings = {
-      "org/gnome/desktop/wm/preferences/" = {
-          button-layout = "close,minimize,maximize:"
+      "org/gnome/desktop/wm/preferences" = {
+          button-layout = "close,minimize,maximize:";
         };
       "org/gnome/desktop/background" = {
           picture-uri = "file://${wallpaper}";
