@@ -15,6 +15,7 @@ global:
       - "ripgrep"
       - "age"
       - "fd"
+      - "tmux"
     casks:
       - "1password"
       - "1password-cli"
