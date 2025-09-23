@@ -26,10 +26,12 @@ in
     ghostty
     claude-code
     flameshot
+    mise
     gnomeExtensions.blur-my-shell
     gnomeExtensions.dash-to-dock
     gnomeExtensions.search-light
     gnomeExtensions.just-perfection
+    gnomeExtensions.user-themes
     imagemagick
   ];
 
@@ -50,7 +52,9 @@ in
     enable = true;
     theme = {
       name = "WhiteSur";
-      package = pkgs.whitesur-gtk-theme;
+      package = pkgs.whitesur-gtk-theme.override { 
+        iconVariant = "apple"; 
+      };
     };
     iconTheme = {
       name = "WhiteSur";
@@ -75,6 +79,7 @@ in
           pkgs.gnomeExtensions.dash-to-dock.extensionUuid
           pkgs.gnomeExtensions.search-light.extensionUuid
           pkgs.gnomeExtensions.just-perfection.extensionUuid
+          pkgs.gnomeExtensions.user-themes.extensionUuid
         ];
       };
       "org/gnome/shell/extensions/search-light" = {
