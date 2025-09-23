@@ -1,0 +1,153 @@
+{ config, pkgs, lib, ... }:
+
+with lib.hm.gvariant;
+let
+  wallpaper = pkgs.fetchurl {
+      url = "https://cdn.osxdaily.com/wp-content/uploads/2024/08/Sequoia-Sunrise-wallpaper-macos.jpg";
+      hash = "sha256-Mdqj0osvpHUwJXXgljJXRRcNHoV7mewwCX4AUcT415s=";
+    };
+in 
+{
+  nixpkgs.config.allowUnfree = true;
+
+  # Home Manager needs a bit of information about you and the
+  # paths it should manage.
+  home.username = "thudd";
+  home.homeDirectory = "/home/thudd";
+  home.packages = with pkgs; [
+    chezmoi
+    _1password-gui
+    _1password-cli
+    ghq
+    gh
+    oh-my-posh
+    orca-slicer
+    ghostty
+    claude-code
+    flameshot
+    gnomeExtensions.blur-my-shell
+    gnomeExtensions.dash-to-dock
+    gnomeExtensions.search-light
+    gnomeExtensions.just-perfection
+    imagemagick
+  ];
+
+  # This value determines the Home Manager release that your
+  # configuration is compatible with. This helps avoid breakage
+  # when a new Home Manager release introduces backwards
+  # incompatible changes.
+  #
+  # You can update Home Manager without changing this value. See
+  # the Home Manager release notes for a list of state version
+  # changes in each release.
+  home.stateVersion = "25.05";
+
+  # Let Home Manager install and manage itself.
+  programs.home-manager.enable = true;
+
+  gtk = {
+    enable = true;
+    theme = {
+      name = "WhiteSur";
+      package = pkgs.whitesur-gtk-theme;
+    };
+    iconTheme = {
+      name = "WhiteSur";
+      package = pkgs.whitesur-icon-theme;
+    };
+  };
+
+  dconf = {
+    enable = true;
+    settings = {
+      "org/gnome/desktop/wm/preferences" = {
+          button-layout = "close,minimize,maximize:";
+        };
+      "org/gnome/desktop/background" = {
+          picture-uri = "file://${wallpaper}";
+          picture-uri-dark = "file://${wallpaper}";
+        };
+      "org/gnome/shell" = {
+        # `gnome-extensions list` for a list
+        enabled-extensions = [
+          pkgs.gnomeExtensions.blur-my-shell.extensionUuid
+          pkgs.gnomeExtensions.dash-to-dock.extensionUuid
+          pkgs.gnomeExtensions.search-light.extensionUuid
+          pkgs.gnomeExtensions.just-perfection.extensionUuid
+        ];
+      };
+      "org/gnome/shell/extensions/search-light" = {
+        animation-speed = 180.0;
+        background-color = mkTuple [ 0.25 0.25 0.25 1.0 ];
+        blur-background = true;
+        blur-brightness = 0.3;
+        blur-sigma = 25.0;
+        border-color = "(0.3, 0.3, 0.3, 0.6)";
+        border-radius = 7.0;
+        border-thickness = 0;
+        entry-font-size = 1;
+        entry-text-color = "(1.0, 1.0, 1.0, 1.0)";
+        font-size = 0;
+        monitor-count = 1;
+        preferred-monitor = 0;
+        scale-height = 0.45;
+        scale-width = 0.35;
+        shortcut-search = [ "<Super>space" ];
+        text-color = "(0.9, 0.9, 0.9, 1.0)";
+        use-animations = true;
+        window-effect = 0;
+      };
+      "org/gnome/shell/extensions/dash-to-dock" = {
+        application-counter-overrides-notifications = true;
+        apply-custom-theme = true;
+        autohide = false;
+        autohide-in-fullscreen = false;
+        background-opacity = 0.45;
+        click-action = "focus-minimize-or-previews";
+        custom-background-color = false;
+        custom-theme-shrink = true;
+        customize-alphas = true;
+        dash-max-icon-size = 43;
+        disable-overview-on-startup = true;
+        dock-fixed = true;
+        dock-position = "BOTTOM";
+        height-fraction = 1.0;
+        hide-tooltip = false;
+        hot-keys = false;
+        intellihide = true;
+        intellihide-mode = "MAXIMIZED_WINDOWS";
+        max-alpha = 0.75;
+        min-alpha = 0.4;
+        multi-monitor = false;
+        preferred-monitor = -2;
+        preferred-monitor-by-connector = "eDP-1";
+        preview-size-scale = 0.0;
+        running-indicator-style = "DOTS";
+        scroll-to-focused-application = true;
+        show-apps-always-in-the-edge = true;
+        show-apps-at-top = false;
+        show-icons-emblems = true;
+        show-icons-notifications-counter = true;
+        show-running = true;
+        show-show-apps-button = true;
+        transparency-mode = "FIXED";
+      };
+
+      "org/gnome/shell/extensions/just-perfection" = {
+        activities-button = false;
+        alt-tab-icon-size = 0;
+        alt-tab-small-icon-size = 0;
+        alt-tab-window-preview-size = 0;
+        clock-menu-position = 1;
+        clock-menu-position-offset = 20;
+        dash-icon-size = 0;
+        looking-glass-width = 0;
+        notification-banner-position = 2;
+        panel-icon-size = 0;
+        panel-size = 0;
+        startup-status = 0;
+        window-demands-attention-focus = true;
+      };
+    };
+  };
+}
