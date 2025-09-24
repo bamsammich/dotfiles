@@ -6,6 +6,13 @@ return {
 			"nvim-lua/plenary.nvim",
 			"antoinemadec/FixCursorHold.nvim",
 			"nvim-treesitter/nvim-treesitter",
+			{
+				"fredrikaverpil/neotest-golang",
+				version = "*", -- Optional, but recommended
+				build = function()
+					vim.system({ "go", "install", "gotest.tools/gotestsum@latest" }):wait() -- Optional, but recommended
+				end,
+			},
 		},
 		opts = {
 			adapters = {
