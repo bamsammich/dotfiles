@@ -1,6 +1,6 @@
 return {
 	{ "nvim-neotest/neotest-plenary" },
-  { "nvim-neotest/nvim-nio" }
+	{ "nvim-neotest/nvim-nio" },
 	{
 		"nvim-neotest/neotest",
 		opts = {
