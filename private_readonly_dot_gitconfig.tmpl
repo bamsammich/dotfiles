@@ -8,7 +8,7 @@ ss = status --short
 loc = diff --stat
 fnr = "!f() { base=${1:-$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')}; git fetch origin && git rebase origin/$base --committer-date-is-author-date; }; f"
 uncommit = reset --soft HEAD~1
-loc = "!git diff HEAD --numstat | awk '{added+=$1; deleted+=$2} END {print \"Added:\", added, \"Deleted:\", deleted, \"Total Change:\", added-deleted}'"
+loc = "!git diff HEAD --numstat | awk '{added+=$1; deleted+=$2} END {print added \"insertion(+),\", deleted, \"deletion(-)\"}'"
 
 [commit]
 gpgSign = true
