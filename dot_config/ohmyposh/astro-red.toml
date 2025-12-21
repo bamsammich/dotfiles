@@ -1,0 +1,100 @@
+console_title_template = '{{ .Shell }} in {{ .Folder }}'
+version = 4
+final_space = true
+
+# Astro Red theme colors:
+# Primary: #FF6B5A (red accent)
+# Secondary: #6BA5FF (blue)
+# Success: #6BFF8A (green)
+# Warning: #FFB86B (yellow)
+# Error: #FF6B5A (red)
+# Muted: #555555 (gray)
+# Foreground: #E8E8E8 (light gray)
+
+[secondary_prompt]
+  template = '⯯⯯ '
+  foreground = '#C96BFF'  # Magenta accent
+  background = 'transparent'
+
+[transient_prompt]
+  template = '⯯ '
+  background = 'transparent'
+  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#C96BFF{{end}}']
+
+[[blocks]]
+  type = 'prompt'
+  alignment = 'left'
+  newline = true
+
+  [[blocks.segments]]
+    template = '{{ .Path }}'
+    foreground = '#6BA5FF'  # Blue for path
+    background = 'transparent'
+    type = 'path'
+    style = 'plain'
+
+    [blocks.segments.options]
+      cache_duration = 'none'
+      style = 'full'
+
+  [[blocks.segments]]
+    template = ' {{ .HEAD }}{{ if or (.Working.Changed) (.Staging.Changed) }}*{{ end }} <#6BFFF5>{{ if gt .Behind 0 }}⇣{{ end }}{{ if gt .Ahead 0 }}⇡{{ end }}</>'
+    foreground = '#AAAAAA'  # Gray for git branch
+    background = 'transparent'
+    type = 'git'
+    style = 'plain'
+
+    [blocks.segments.options]
+      branch_icon = ''
+      cache_duration = 'none'
+      commit_icon = '@'
+      fetch_status = true
+
+[[blocks]]
+  type = 'rprompt'
+  overflow = 'hidden'
+
+  [[blocks.segments]]
+    template = '{{ .FormattedMs }}'
+    foreground = '#FFB86B'  # Yellow for execution time
+    background = 'transparent'
+    type = 'executiontime'
+    style = 'plain'
+
+    [blocks.segments.options]
+      cache_duration = 'none'
+      threshold = 5000
+
+[[blocks]]
+  type = 'prompt'
+  alignment = 'left'
+  newline = true
+
+  [[blocks.segments]]
+    template = '{{ if .SSHSession }}   {{ .UserName }}@{{ .HostName }} {{ end }}'
+    foreground = '#E8E8E8'  # Bright white for SSH
+    background = 'transparent'
+    type = 'session'
+    style = 'plain'
+
+  [[blocks.segments]]
+    template = '⯯'
+    background = 'transparent'
+    type = 'text'
+    style = 'plain'
+    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#C96BFF{{end}}']  # Red on error, Magenta on success
+
+    [blocks.segments.options]
+      cache_duration = 'none'
+
+[palette]
+  # Astro Red color palette
+  red = '#FF6B5A'
+  green = '#6BFF8A'
+  yellow = '#FFB86B'
+  blue = '#6BA5FF'
+  magenta = '#C96BFF'
+  cyan = '#6BFFF5'
+  white = '#E8E8E8'
+  gray = '#AAAAAA'
+  black = '#0A0B0D'
