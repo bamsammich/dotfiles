@@ -1,0 +1,36 @@
+# Astro Red - Cyberpunk space theme inspired by astronaut imagery
+# Primary accent: Vibrant red/coral from helmet glow
+# Dark space background with high contrast
+#
+# Installation:
+#   1. Copy this file to ~/.config/ghostty/themes/astro-red
+#   2. Add "theme = astro-red" to your ~/.config/ghostty/config
+#   3. Reload config with Cmd+Shift+, (macOS) or Ctrl+Shift+, (Linux)
+
+# ANSI Colors 0-7 (Normal)
+palette = 0=#0A0B0D
+palette = 1=#FF6B5A
+palette = 2=#6BFF8A
+palette = 3=#FFB86B
+palette = 4=#6BA5FF
+palette = 5=#C96BFF
+palette = 6=#6BFFF5
+palette = 7=#AAAAAA
+
+# ANSI Colors 8-15 (Bright)
+palette = 8=#555555
+palette = 9=#FF8A7A
+palette = 10=#8AFFAA
+palette = 11=#FFD08A
+palette = 12=#8AC0FF
+palette = 13=#E08AFF
+palette = 14=#8AFFFD
+palette = 15=#E8E8E8
+
+# Special colors
+background = #0A0B0D
+foreground = #E8E8E8
+cursor-color = #FF6B5A
+cursor-text = #0A0B0D
+selection-background = #FF6B5A
+selection-foreground = #0A0B0D
