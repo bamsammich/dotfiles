@@ -12,12 +12,12 @@ final_space = true
 # Foreground: #E8E8E8 (light gray)
 
 [secondary_prompt]
-  template = '⯯⯯ '
+  template = '❯❯ '
   foreground = '#AAAAAA'  # Gray accent
   background = 'transparent'
 
 [transient_prompt]
-  template = '⯯ '
+  template = '❯ '
   background = 'transparent'
   foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#AAAAAA{{end}}']
 
@@ -28,7 +28,7 @@ final_space = true
 
   [[blocks.segments]]
     template = '{{ .Path }}'
-    foreground = '#E8E8E8'  # White for path
+    foreground = '#FF8A7A'  # Bright/light red for path
     background = 'transparent'
     type = 'path'
     style = 'plain'
@@ -71,14 +71,14 @@ final_space = true
   newline = true
 
   [[blocks.segments]]
-    template = '{{ if .SSHSession }}   {{ .UserName }}@{{ .HostName }} {{ end }}'
+    template = '{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }} {{ end }}'
     foreground = '#FF6B5A'  # Red for SSH
     background = 'transparent'
     type = 'session'
     style = 'plain'
 
   [[blocks.segments]]
-    template = '⯯'
+    template = '❯'
     background = 'transparent'
     type = 'text'
     style = 'plain'
