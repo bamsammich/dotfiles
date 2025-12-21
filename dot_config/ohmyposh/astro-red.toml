@@ -13,13 +13,13 @@ final_space = true
 
 [secondary_prompt]
   template = '⯯⯯ '
-  foreground = '#6BA5FF'  # Blue accent
+  foreground = '#6BFFF5'  # Cyan accent
   background = 'transparent'
 
 [transient_prompt]
   template = '⯯ '
   background = 'transparent'
-  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFF8A{{end}}']
+  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']
 
 [[blocks]]
   type = 'prompt'
@@ -82,7 +82,7 @@ final_space = true
     background = 'transparent'
     type = 'text'
     style = 'plain'
-    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFF8A{{end}}']  # Red on error, Magenta on success
+    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']  # Red on error, Cyan on success
 
     [blocks.segments.options]
       cache_duration = 'none'
@@ -93,7 +93,7 @@ final_space = true
   green = '#6BFF8A'
   yellow = '#FFB86B'
   blue = '#6BA5FF'
-  magenta = '#C96BFF'
+  magenta = '#C96BFF'  # Available but not used in this theme
   cyan = '#6BFFF5'
   white = '#E8E8E8'
   gray = '#AAAAAA'
