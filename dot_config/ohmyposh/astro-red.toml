@@ -13,13 +13,13 @@ final_space = true
 
 [secondary_prompt]
   template = '❯❯ '
-  foreground = '#AAAAAA'  # Gray accent
+  foreground = '#6BFFF5'  # Cyan accent
   background = 'transparent'
 
 [transient_prompt]
   template = '❯ '
   background = 'transparent'
-  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#AAAAAA{{end}}']
+  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']
 
 [[blocks]]
   type = 'prompt'
@@ -28,7 +28,7 @@ final_space = true
 
   [[blocks.segments]]
     template = '{{ .Path }}'
-    foreground = '#FF8A7A'  # Bright/light red for path
+    foreground = '#FFB86B'  # Yellow for path
     background = 'transparent'
     type = 'path'
     style = 'plain'
@@ -82,7 +82,7 @@ final_space = true
     background = 'transparent'
     type = 'text'
     style = 'plain'
-    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#AAAAAA{{end}}']  # Red on error, Gray on success
+    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']  # Red on error, Cyan on success
 
     [blocks.segments.options]
       cache_duration = 'none'
