@@ -13,13 +13,13 @@ final_space = true
 
 [secondary_prompt]
   template = '⯯⯯ '
-  foreground = '#6BFFF5'  # Cyan accent
+  foreground = '#AAAAAA'  # Gray accent
   background = 'transparent'
 
 [transient_prompt]
   template = '⯯ '
   background = 'transparent'
-  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']
+  foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#AAAAAA{{end}}']
 
 [[blocks]]
   type = 'prompt'
@@ -28,7 +28,7 @@ final_space = true
 
   [[blocks.segments]]
     template = '{{ .Path }}'
-    foreground = '#6BA5FF'  # Blue for path
+    foreground = '#E8E8E8'  # White for path
     background = 'transparent'
     type = 'path'
     style = 'plain'
@@ -72,7 +72,7 @@ final_space = true
 
   [[blocks.segments]]
     template = '{{ if .SSHSession }}   {{ .UserName }}@{{ .HostName }} {{ end }}'
-    foreground = '#E8E8E8'  # Bright white for SSH
+    foreground = '#FF6B5A'  # Red for SSH
     background = 'transparent'
     type = 'session'
     style = 'plain'
@@ -82,7 +82,7 @@ final_space = true
     background = 'transparent'
     type = 'text'
     style = 'plain'
-    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#6BFFF5{{end}}']  # Red on error, Cyan on success
+    foreground_templates = ['{{if gt .Code 0}}#FF6B5A{{end}}', '{{if eq .Code 0}}#AAAAAA{{end}}']  # Red on error, Gray on success
 
     [blocks.segments.options]
       cache_duration = 'none'
