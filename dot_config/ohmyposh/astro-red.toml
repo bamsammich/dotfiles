@@ -13,7 +13,7 @@ final_space = true
 
 [secondary_prompt]
   template = '⯯⯯ '
-  foreground = '#C96BFF'  # Magenta accent
+  foreground = '#6BA5FF'  # Magenta accent
   background = 'transparent'
 
 [transient_prompt]
