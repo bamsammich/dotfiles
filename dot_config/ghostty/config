@@ -1,4 +1,4 @@
-custom-shader = shaders/KroneCorylus/ghostty-shader-playground/shaders/cursor_smear_fade.glsl
-theme = astro-red
-background-opacity = 0.85
+custom-shader = shaders/KroneCorylus/ghostty-shader-playground/public/shaders/cursor_smear_fade.glsl
+theme = astronaut-noir
+background-opacity = 0.8
 background-blur = true
