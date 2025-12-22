@@ -1,2 +1,4 @@
 custom-shader = shaders/KroneCorylus/ghostty-shader-playground/shaders/cursor_smear_fade.glsl
-theme = TokyoNight Moon
+theme = astro-red
+background-opacity = 0.85
+background-blur = true
