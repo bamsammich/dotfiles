@@ -21,6 +21,7 @@ global:
       - "1password-cli"
       - "visual-studio-code"
       - "font-caskaydia-mono-nerd-font"
+      - "font-hurmit-nerd-font"
       - "obsidian"
       - "powershell"
       - "ghostty@tip"
