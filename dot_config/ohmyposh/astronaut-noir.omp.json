@@ -1,0 +1,108 @@
+{
+  "console_title_template": "{{ .Shell }} in {{ .Folder }}",
+  "version": 3,
+  "final_space": true,
+  "secondary_prompt": {
+    "template": "❯❯ ",
+    "foreground": "comment",
+    "background": "transparent"
+  },
+  "transient_prompt": {
+    "template": "❯ ",
+    "background": "transparent",
+    "foreground_templates": [
+      "{{if gt .Code 0}}red{{end}}",
+      "{{if eq .Code 0}}comment{{end}}"
+    ]
+  },
+  "palette": {
+    "bg":            "#0B0D10",
+    "bg_alt":        "#14171C",
+    "bg_ui":         "#1E2229",
+    "fg":            "#E6E8EB",
+    "fg_muted":      "#A3A7AD",
+    "comment":       "#6B7078",
+    "red":           "#C8342F",
+    "red_bright":    "#E04B43",
+    "red_dark":      "#8F2A27",
+    "blue_gray":     "#3A424D",
+    "slate":         "#2A3038"
+  },
+  "blocks": [
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "template": "{{ .Path }}",
+          "foreground": "red",
+          "background": "transparent",
+          "type": "path",
+          "style": "plain",
+          "properties": {
+            "cache_duration": "none",
+            "style": "full"
+          }
+        },
+        {
+          "template": " {{ .HEAD }}{{ if or (.Working.Changed) (.Staging.Changed) }}*{{ end }} <cyan>{{ if gt .Behind 0 }}⇣{{ end }}{{ if gt .Ahead 0 }}⇡{{ end }}</>",
+          "foreground": "slate",
+          "background": "transparent",
+          "type": "git",
+          "style": "plain",
+          "properties": {
+            "branch_icon": "",
+            "cache_duration": "none",
+            "commit_icon": "@",
+            "fetch_status": true
+          }
+        }
+      ]
+    },
+    {
+      "type": "rprompt",
+      "overflow": "hidden",
+      "segments": [
+        {
+          "template": "{{ .FormattedMs }}",
+          "foreground": "slate",
+          "background": "transparent",
+          "type": "executiontime",
+          "style": "plain",
+          "properties": {
+            "cache_duration": "none",
+            "threshold": 5000
+          }
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "type": "session",
+          "style": "plain",
+          "foreground": "red_bright",
+          "background": "transparent",
+          "template": "{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }} {{ end }}"
+        },
+        {
+          "template": "❯",
+          "background": "transparent",
+          "type": "text",
+          "style": "plain",
+          "foreground_templates": [
+            "{{if gt .Code 0}}red{{end}}",
+            "{{if eq .Code 0}}comment{{end}}"
+          ],
+          "properties": {
+            "cache_duration": "none"
+          }
+        }
+      ]
+    }
+  ]
+}
