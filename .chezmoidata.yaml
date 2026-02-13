@@ -16,6 +16,7 @@ global:
       - "age"
       - "fd"
       - "tmux"
+      - "tree-sitter-cli"
     casks:
       - "1password"
       - "1password-cli"
