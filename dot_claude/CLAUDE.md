@@ -16,3 +16,11 @@
 
 - **Commits**: Use conventional format: <type>(<scope>): <subject> where type = feat|fix|docs|style|refactor|test|chore|perf. Subject: 50 chars max, imperative mood ("add" not "added"), no period. For small changes: one-line commit only. For complex changes: add body explaining what/why (72-char lines) and reference issues. Keep commits atomic (one logical change) and self-explanatory. Split into multiple commits if addressing different concerns.
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
+
+## Coding Practices
+
+- Use best practices and modern, widely-accepted tooling for the language you're working in.
+- Practice codebase hygiene
+  - Always remove dead code
+  - Implement automated linting and formatting to enforce style consistency
+  - Regularly update dependencies to the latest stable version unless doing so requires a refactor. Refactoring to update a dependency should be considered its own feature work
