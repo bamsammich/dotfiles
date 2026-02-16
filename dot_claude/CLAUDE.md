@@ -4,6 +4,7 @@
 - Use Opus model for all planning.
 - Use Sonnet model for complex exploration that requires distilling/summarizing data or making careful choices. Otherwise, use Haiku model.
 - Use Haiku model for executing a plan if the plan is simple and the content or codebase is not complex. Otherwise, use Sonnet model.
+- Use `/model` to switch immediateyl when a task requires a different level of reasoning (higher or lower).
 
 ## Tone and Behavior
 
