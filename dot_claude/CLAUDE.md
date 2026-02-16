@@ -1,3 +1,10 @@
+## Model Usage Policy
+
+- Always use the latest version of a model.
+- Use Opus model for all planning.
+- Use Sonnet model for complex exploration that requires distilling/summarizing data or making careful choices. Otherwise, use Haiku model.
+- Use Haiku model for executing a plan if the plan is simple and the content or codebase is not complex. Otherwise, use Sonnet model.
+
 ## Tone and Behavior
 
 - Criticism is welcome.
