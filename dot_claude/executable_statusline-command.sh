@@ -3,104 +3,154 @@
 # Read JSON input from stdin
 input=$(cat)
 
-# Extract values from JSON
+# Extract values
 cwd=$(echo "$input" | jq -r '.workspace.current_dir')
 model=$(echo "$input" | jq -r '.model.display_name')
-remaining=$(echo "$input" | jq -r '.context_window.remaining_percentage // empty')
+transcript_path=$(echo "$input" | jq -r '.transcript_path')
 
-# Calculate API cost (approximate rates for Claude models)
-total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
-total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
+# Use full path (replace home with ~)
+dir="${cwd/#$HOME/~}"
 
-# Approximate cost calculation (rates per million tokens)
-# Sonnet: $3 input / $15 output per MTok
-# Adjust based on model if needed
-cost_input=$(echo "scale=4; $total_input * 3 / 1000000" | bc)
-cost_output=$(echo "scale=4; $total_output * 15 / 1000000" | bc)
-total_cost=$(echo "scale=2; $cost_input + $cost_output" | bc)
+# Calculate token usage and cost from transcript
+tokens=""
+cost=""
+if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+  # Parse transcript JSON and sum up tokens by type
+  token_data=$(jq -rs '
+        [.[] | select(.type == "assistant") | .message.usage | select(. != null)] |
+        {
+            input: ([.[].input_tokens // 0] | add),
+            cache_read: ([.[].cache_read_input_tokens // 0] | add),
+            cache_write: ([.[].cache_creation_input_tokens // 0] | add),
+            output: ([.[].output_tokens // 0] | add)
+        } | [.input, .cache_read, .cache_write, .output] | @tsv
+    ' "$transcript_path" 2>/dev/null)
 
-# Format cost display
-api_cost=""
-if [ "$total_input" -gt 0 ] || [ "$total_output" -gt 0 ]; then
-  printf -v api_cost "| $%0.2f" "${total_cost}"
+  if [ -n "$token_data" ]; then
+    input_tok=$(echo "$token_data" | cut -f1)
+    cache_read_tok=$(echo "$token_data" | cut -f2)
+    cache_write_tok=$(echo "$token_data" | cut -f3)
+    output_tok=$(echo "$token_data" | cut -f4)
+
+    # Calculate total tokens
+    token_sum=$((input_tok + cache_read_tok + cache_write_tok + output_tok))
+    tokens=$(printf "%'d" "$token_sum")
+
+    # Determine pricing based on model
+    case "$model" in
+    *"Sonnet 4.5"* | *"4.5"*)
+      input_price=3
+      cache_read_price=0.30
+      cache_write_price=3.75
+      output_price=15
+      ;;
+    *"Opus"*)
+      input_price=15
+      cache_read_price=1.50
+      cache_write_price=18.75
+      output_price=75
+      ;;
+    *"Haiku"*)
+      input_price=0.25
+      cache_read_price=0.03
+      cache_write_price=0.30
+      output_price=1.25
+      ;;
+    *)
+      # Default to Sonnet 4.5 pricing
+      input_price=3
+      cache_read_price=0.30
+      cache_write_price=3.75
+      output_price=15
+      ;;
+    esac
+
+    # Calculate cost
+    cost_calc=$(echo "scale=4; ($input_tok * $input_price + $cache_read_tok * $cache_read_price + $cache_write_tok * $cache_write_price + $output_tok * $output_price) / 1000000" | bc)
+    if [ -n "$cost_calc" ] && [ "$(echo "$cost_calc > 0" | bc)" -eq 1 ]; then
+      cost=$(printf "\$%.2f" "$cost_calc")
+    fi
+  fi
 fi
 
-# Git status (skip locks for speed)
-git_info=""
-display_path="$cwd"
-is_git_repo=false
+# Get git branch if in a git repo
 if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
-  is_git_repo=true
-  # Get repo root and show path relative to it
-  repo_root=$(git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
-  repo_name=$(basename "$repo_root")
-  rel_path=$(echo "$cwd" | sed "s|^$repo_root||")
-  if [ -z "$rel_path" ]; then
-    display_path="$repo_name"
+  branch=$(git -C "$cwd" -c core.useBuiltinFSMonitor=false branch --show-current 2>/dev/null)
+
+  # Check for upstream tracking and commits ahead/behind
+  upstream=""
+  if git -C "$cwd" rev-parse --abbrev-ref @{u} >/dev/null 2>&1; then
+    ahead=$(git -C "$cwd" rev-list --count @{u}..HEAD 2>/dev/null)
+    behind=$(git -C "$cwd" rev-list --count HEAD..@{u} 2>/dev/null)
+
+    if [ "$ahead" -gt 0 ] && [ "$behind" -gt 0 ]; then
+      upstream="↑${ahead}↓${behind}"
+    elif [ "$ahead" -gt 0 ]; then
+      upstream="↑${ahead}"
+    elif [ "$behind" -gt 0 ]; then
+      upstream="↓${behind}"
+    fi
+  fi
+
+  # Check git status
+  if ! git -C "$cwd" -c core.useBuiltinFSMonitor=false diff --quiet 2>/dev/null ||
+    ! git -C "$cwd" -c core.useBuiltinFSMonitor=false diff --cached --quiet 2>/dev/null; then
+    git_status="!"
+    git_color="31" # red
+  elif [ -n "$(git -C "$cwd" -c core.useBuiltinFSMonitor=false ls-files --others --exclude-standard 2>/dev/null)" ]; then
+    git_status="?"
+    git_color="32" # green
   else
-    display_path="$repo_name$rel_path"
+    git_status=""
+    git_color=""
   fi
 
-  branch=$(git -C "$cwd" --no-optional-locks branch --show-current 2>/dev/null || echo "detached")
+  if [ -n "$branch" ]; then
+    # Build the output with branch, optional upstream, optional status
+    output="\033[32m${dir}\033[0m on \033[35m${branch}\033[0m"
 
-  # Check for changes
-  changes=""
-  if ! git -C "$cwd" --no-optional-locks diff --quiet 2>/dev/null ||
-    ! git -C "$cwd" --no-optional-locks diff --cached --quiet 2>/dev/null; then
-    changes="*"
+    if [ -n "$upstream" ]; then
+      output="${output}\033[36m${upstream}\033[0m"
+    fi
+
+    if [ -n "$git_status" ]; then
+      output="${output}\033[${git_color}m${git_status}\033[0m"
+    fi
+
+    output="${output} [\033[35m${model}\033[0m"
+
+    if [ -n "$tokens" ]; then
+      output="${output} | \033[33m${tokens}\033[0m"
+      if [ -n "$cost" ]; then
+        output="${output} (\033[32m${cost}\033[0m)"
+      fi
+    fi
+
+    output="${output}]"
+    printf "%b" "$output"
+  else
+    output="\033[32m${dir}\033[0m [\033[35m${model}\033[0m"
+
+    if [ -n "$tokens" ]; then
+      output="${output} | \033[33m${tokens}\033[0m"
+      if [ -n "$cost" ]; then
+        output="${output} (\033[32m${cost}\033[0m)"
+      fi
+    fi
+
+    output="${output}]"
+    printf "%b" "$output"
   fi
-
-  # Check ahead/behind
-  ahead_behind=""
-  upstream=$(git -C "$cwd" --no-optional-locks rev-parse --abbrev-ref @{upstream} 2>/dev/null)
-  if [ -n "$upstream" ]; then
-    ahead=$(git -C "$cwd" --no-optional-locks rev-list --count @{upstream}..HEAD 2>/dev/null || echo 0)
-    behind=$(git -C "$cwd" --no-optional-locks rev-list --count HEAD..@{upstream} 2>/dev/null || echo 0)
-    [ "$behind" -gt 0 ] && ahead_behind="${ahead_behind}⇣"
-    [ "$ahead" -gt 0 ] && ahead_behind="${ahead_behind}⇡"
-  fi
-
-  git_info=" │  ${branch}${changes}${ahead_behind}"
-fi
-
-# Context window indicator
-context_info=""
-[ -n "$remaining" ] && context_info=" │ ${remaining}% left"
-
-# Terminal theme-adaptive colors using ANSI color references
-# Color 4 = blue (git repo path), 5 = magenta (non-git path), 2 = green (context), 3 = yellow (changes), 6 = cyan (model)
-if [ "$is_git_repo" = true ]; then
-  path_color="\033[34m"      # Terminal color 4 (blue) for git repos
 else
-  path_color="\033[35m"      # Terminal color 5 (magenta) for non-git directories
+  output="\033[32m${dir}\033[0m [\033[35m${model}\033[0m"
+
+  if [ -n "$tokens" ]; then
+    output="${output} | \033[33m${tokens}\033[0m"
+    if [ -n "$cost" ]; then
+      output="${output} (\033[32m${cost}\033[0m)"
+    fi
+  fi
+
+  output="${output}]"
+  printf "%b" "$output"
 fi
-git_color="\033[34m"       # Terminal color 4 (blue)
-change_color="\033[33m"    # Terminal color 3 (yellow)
-model_color="\033[36m"     # Terminal color 6 (cyan)
-context_color="\033[32m"   # Terminal color 2 (green)
-reset="\033[0m"
-dim="\033[2m"
-separator="${dim}│${reset}"
-
-# Build colored components
-colored_path="${path_color}${display_path}${reset}"
-
-# Color git changes if present - remove extra space
-if [ -n "$git_info" ]; then
-  # Remove leading space and pipe (with any extra spaces), we'll add them back with proper spacing
-  git_info_clean=$(echo "$git_info" | sed 's/^ │  *//')
-  git_info_colored=$(echo "$git_info_clean" | sed "s/\*/${change_color}*${reset}/g")
-  colored_git="${dim} ${separator} ${git_color}${git_info_colored}${reset}"
-else
-  colored_git=""
-fi
-
-colored_model="${dim} ${separator} ${model_color}${model}${reset}"
-colored_context=""
-[ -n "$remaining" ] && colored_context="${dim} ${separator} ${context_color}${remaining}% left${reset}"
-
-colored_cost=""
-[ -n "$api_cost" ] && colored_cost="${dim} ${api_cost}${reset}"
-
-# Build the status line with theme-adaptive colors
-printf "%b%b%b%b%b\n" "$colored_path" "$colored_git" "$colored_model" "$colored_context" "$colored_cost"
