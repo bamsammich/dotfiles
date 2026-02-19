@@ -1,1 +1,15 @@
 key.txt.age
+
+{{ if ne .chezmoi.os "darwin" }}
+.Brewfile
+.zshrc
+.zsh.d/**
+.config/aerospace/**
+.config/powershell/**
+.pwsh/**
+{{ end }}
+
+{{ if ne .chezmoi.os "linux" }}
+.bashrc
+.bash.d/**
+{{ end }}
