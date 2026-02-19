@@ -1,0 +1,17 @@
+{{- if and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "arch") -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Skip if yay is already installed (ships with Omarchy)
+if command -v yay &>/dev/null; then
+  exit 0
+fi
+
+sudo pacman -S --needed --noconfirm base-devel git
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+git clone https://aur.archlinux.org/yay.git "$tmpdir/yay"
+cd "$tmpdir/yay"
+makepkg -si --noconfirm
+{{ end -}}
