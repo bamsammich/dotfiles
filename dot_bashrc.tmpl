@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+PATH="$HOME/.local/bin:$HOME/bin:$HOME/.cargo/bin:$PATH"
+
+eval "$(ssh-agent -s)" >/dev/null 2>&1
+ssh-add "$HOME/.ssh/id_ed25519" 2>/dev/null
+
+# Aliases
+alias k=kubectl
+alias g=git
+alias ls='ls -al --color=auto'
+alias ch='chezmoi'
+
+# History
+HISTSIZE=5000
+HISTFILE=~/.bash_history
+HISTFILESIZE=$HISTSIZE
+HISTCONTROL=ignoreboth:erasedups
+shopt -s histappend
+
+# Bash completion
+if [ -f /usr/share/bash-completion/bash_completion ]; then
+  . /usr/share/bash-completion/bash_completion
+elif [ -f /etc/bash_completion ]; then
+  . /etc/bash_completion
+fi
+
+# Vars
+export OP_ACCOUNT={{ .onepassword.account | quote }}
+export EDITOR="nvim"
+
+# oh-my-posh
+eval "$(oh-my-posh init bash --config ~/.config/ohmyposh/astronaut-noir.omp.json)"
+
+# fzf
+eval "$(fzf --bash)"
+
+# zoxide (ships with Omarchy)
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init bash)"
+fi
+
+# GHQ
+if command -v ghq &>/dev/null; then
+  export GHQ_ROOT="$(ghq root)"
+  CDPATH="$HOME:$GHQ_ROOT/github.com"
+fi
+{{- if .bashrc_snippet }}
+{{ .bashrc_snippet | nindent 0 }}
+{{- end }}
+
+# Source modular shell fragments
+if [ -d "$HOME/.bash.d" ]; then
+  for f in "$HOME/.bash.d"/*; do
+    [ -d "$f" ] && continue
+    . "$f"
+  done
+fi
