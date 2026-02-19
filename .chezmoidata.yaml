@@ -32,3 +32,32 @@ global:
     mas: []
     taps:
       - "nikitabobko/tap"
+  pacman:
+    packages:
+      - "age"
+      - "binutils"
+      - "chezmoi"
+      - "coreutils"
+      - "fd"
+      - "fzf"
+      - "git"
+      - "github-cli"
+      - "jq"
+      - "k9s"
+      - "neovim"
+      - "obsidian"
+      - "ripgrep"
+      - "tmux"
+      - "ttf-caskaydia-mono-nerd"
+      - "zsh"
+  aur:
+    packages:
+      - "1password"
+      - "1password-cli"
+      - "ghq"
+      - "oh-my-posh-bin"
+      - "tree-sitter-cli"
+      - "ttf-hermit-nerd"
+      - "visual-studio-code-bin"
+      - "zed-preview-bin"
+      - "zen-browser-bin"
