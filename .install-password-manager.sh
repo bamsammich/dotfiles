@@ -8,7 +8,11 @@ Darwin)
   brew install 1password 1password-cli
   ;;
 Linux)
-  echo "no password manager defined for Linux"
+  if command -v yay >/dev/null 2>&1; then
+    yay -S --needed --noconfirm 1password 1password-cli
+  else
+    echo "no supported package manager found for Linux"
+  fi
   ;;
 *)
   echo "unsupported OS"
