@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 
-{{ if eq .chezmoi.os "darwin" }}
+{{ if eq .chezmoi.os "darwin" -}}
 # .Brewfile hash: {{ includeTemplate "dot_Brewfile.tmpl" (dict "chezmoi" .chezmoi "global" .global "homebrew" .homebrew) | sha256sum }}
 brew bundle --global --cleanup
-{{- else if eq .chezmoi.os "linux" }}
-{{ if .apt }}
-# apt hash: {{ .apt | join " " | sha256sum }}
-sudo apt install {{ .apt | join " " }} -y
-{{ end }}
-{{ if .snap }}
-## snap hash: {{ .snap | join " " | sha256sum }}
-snap install {{ .snap | join " " }}
-{{ end }}
-{{ end -}}
+{{- else if and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "arch") -}}
+{{ $pacman := concat .global.pacman.packages .pacman.packages | uniq | sortAlpha -}}
+{{ $aur := concat .global.aur.packages .aur.packages | uniq | sortAlpha -}}
+# pacman hash: {{ $pacman | join " " | sha256sum }}
+# aur hash: {{ $aur | join " " | sha256sum }}
+sudo pacman -S --needed --noconfirm {{ $pacman | join " " }}
+yay -S --needed --noconfirm {{ $aur | join " " }}
+{{- end }}

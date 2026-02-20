@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 
+{{ if eq .chezmoi.os "darwin" -}}
 PATH="/opt/homebrew/opt/gnu-tar/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/coreutils/libexec/gnubin:/usr/local/bin:$HOME/.local/bin:$HOME/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$HOME/scratch/scripts:$PATH"
+{{- else -}}
+PATH="$HOME/.local/bin:$HOME/bin:$HOME/.cargo/bin:$PATH"
+{{- end }}
 
 # Taken from https://www.youtube.com/watch?v=ud7YxC33Z3w
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit"
