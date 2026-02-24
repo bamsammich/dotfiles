@@ -17,7 +17,6 @@ Launch the `adr-review` agent as a subagent, passing the plan content:
 Task(
   description: "Review plan against ADRs",
   subagent_type: "general-purpose",
-  model: "sonnet",
   prompt: "/agents adr-review\n\nReview the following plan:\n\n<plan>\n{plan content}\n</plan>"
 )
 ```
