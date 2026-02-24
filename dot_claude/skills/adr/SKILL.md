@@ -9,12 +9,13 @@ Record architectural decisions as concise MADR documents in `docs/adr/` within t
 
 ## Workflow
 
-1. **Identify**: Clarify the architectural decision to record with the user
-2. **Draft**: Write the ADR using the MADR template in [references/madr-template.md](references/madr-template.md)
-3. **Check supersession**: Read existing ADRs in `docs/adr/` to determine if this decision supersedes a previous one
-4. **Present**: Show the draft ADR to the user for approval
-5. **Write**: On approval, write the ADR file and update OVERVIEW.md
-6. **Verify gitignore**: Ensure `docs/adr/` is not gitignored
+1. **Notify early**: As soon as an architectural choice is identified, tell the user an ADR will be needed. Do not wait until the end of planning.
+2. **Collaborate on the decision**: If the decision involves choices (e.g., which database, which framework), work through the options with the user before drafting. If the choice was already made during planning, confirm it.
+3. **Draft**: Write the ADR using the MADR template in [references/madr-template.md](references/madr-template.md)
+4. **Check supersession**: Read existing ADRs in `docs/adr/` to determine if this decision supersedes a previous one
+5. **Present**: Show the draft ADR to the user for approval
+6. **Write before implementation**: On approval, write the ADR file and update OVERVIEW.md. ADRs MUST be committed before any implementation work begins.
+7. **Verify gitignore**: Ensure `docs/adr/` is not gitignored
 
 ## File Conventions
 
