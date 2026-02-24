@@ -10,8 +10,8 @@ Review a plan or implementation against the active Architectural Decision Record
 
 ## Instructions
 
-1. Read `docs/adr/OVERVIEW.md` to get the list of active ADRs
-2. Read each active ADR file listed in OVERVIEW.md
+1. Read `docs/adr/OVERVIEW.md` to get the list of active (non-superseded) ADRs
+2. Read only the active ADR files — skip superseded ADRs unless historical context is needed to understand an active one
 3. Determine review type from the input:
    - `<plan>` block: compare planned approach against ADRs
    - `<diff>` block: compare code changes against ADRs
