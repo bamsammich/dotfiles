@@ -1,3 +1,9 @@
+---
+name: adr-review
+description: Reviews implementation plans against existing Architectural Decision Records (ADRs) in docs/adr/ for compliance
+model: sonnet
+---
+
 # ADR Compliance Review Agent
 
 Review an implementation plan against the active Architectural Decision Records (ADRs) in this repository.
