@@ -2,71 +2,45 @@
 
 Based on [golang-standards/project-layout](https://github.com/golang-standards/project-layout).
 
-**Golden rule: Don't create directories unless you need them.** Start minimal and add structure as the project grows.
+**Start minimal. Don't create directories unless you need them.**
 
 ## Core Directories
 
-### `/cmd`
-Main applications. Each subdirectory = one binary. Keep `main.go` small — import and invoke code from `/internal` or `/pkg`.
+| Directory | Purpose |
+|-----------|---------|
+| `cmd/<appname>/` | Main applications. One subdirectory per binary. Keep `main.go` small — import and call `internal/`. |
+| `internal/` | Private code. Compiler-enforced — cannot be imported externally. |
+| `pkg/` | Code intentionally exported for external use. Many projects don't need this. |
 
-```
-cmd/
-  myapp/
-    main.go
-  mycli/
-    main.go
-```
-
-### `/internal`
-Private application and library code. Enforced by the Go compiler — other projects cannot import it. Use subdirectories to separate concerns:
-
+### Typical `internal/` layout
 ```
 internal/
   app/        # application logic
-  config/     # configuration handling
+  config/     # configuration
   domain/     # domain models
   handler/    # HTTP/gRPC handlers
   repository/ # data access
   service/    # business logic
 ```
 
-### `/pkg`
-Library code safe for external use. Other projects can import these packages. Only create when you intentionally want to export reusable code. Many projects don't need this.
-
-## Common Application Directories
-
-### `/api`
-OpenAPI/Swagger specs, JSON schema files, protocol definition files (`.proto`).
-
-### `/configs`
-Configuration file templates or default configs. `confd` or `consul-template` template files go here.
-
-### `/build`
-Packaging and CI. `/build/package` for cloud, container, OS configs. `/build/ci` for CI pipeline configs.
-
-### `/deployments` (or `/deploy`)
-IaaS, PaaS, system, and container orchestration configs (docker-compose, Kubernetes, Helm, Terraform).
-
-### `/scripts`
-Scripts for build, install, analysis, etc. Keep the root Makefile small by calling into scripts here.
-
-### `/test`
-Additional external test apps and test data. Integration tests, e2e tests, test fixtures. Go ignores directories starting with `.` or `_`.
-
 ## Other Directories
 
 | Directory | Purpose |
 |-----------|---------|
-| `/docs` | Design and user documents |
-| `/tools` | Supporting tools for the project |
-| `/examples` | Application and library examples |
-| `/third_party` | External helper tools, forked code, other third-party utilities |
-| `/assets` | Images, logos, and other non-code assets |
-| `/web` | Web application components: static assets, server-side templates, SPAs |
+| `/api` | OpenAPI/Swagger specs, protobuf definitions |
+| `/configs` | Config templates and defaults |
+| `/build` | Packaging, CI configs |
+| `/deployments` | Docker, Kubernetes, Terraform configs |
+| `/scripts` | Build/install/analysis scripts |
+| `/test` | Integration/e2e tests, test fixtures |
+| `/docs` | Documentation |
+| `/tools` | Supporting tools |
+| `/examples` | Usage examples |
+| `/web` | Web static assets, templates, SPAs |
 
 ## Anti-Patterns
 
-- **No `/src`** — Not idiomatic Go. Don't use it.
-- **No `/model` or `/models`** — Put domain types in `/internal/domain` or colocate with the package that uses them.
-- **No `/utils` or `/helpers`** — These become dumping grounds. Put functions in the package that uses them or create a descriptive package name.
-- **Avoid deep nesting** — Flat is better. `internal/auth` not `internal/services/auth/handler/v1`.
+- **No `/src`** — not idiomatic Go.
+- **No `/model` or `/models`** — use `internal/domain` or colocate with the consuming package.
+- **No `/utils` or `/helpers`** — these become dumping grounds. Use descriptive package names.
+- **Avoid deep nesting** — `internal/auth` not `internal/services/auth/handler/v1`.

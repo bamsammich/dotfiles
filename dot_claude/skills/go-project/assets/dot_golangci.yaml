@@ -29,6 +29,8 @@ linters:
       min-complexity: 15
     govet:
       enable-all: true
+      disable:
+        - shadow # import shadowing is noisy; Go makes shadowing clear at point of use
     nolintlint:
       require-explanation: true
       allow-unused: true

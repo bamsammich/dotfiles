@@ -1,47 +1,19 @@
 # Go Style Guide
 
-Condensed from [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) and [Effective Go](https://go.dev/doc/effective_go). Focus on actionable rules that are non-obvious or commonly violated.
-
-## Table of Contents
-
-- [Naming](#naming)
-- [Interfaces](#interfaces)
-- [Error Handling](#error-handling)
-- [Concurrency](#concurrency)
-- [Functions and Methods](#functions-and-methods)
-- [Types and Structs](#types-and-structs)
-- [Control Flow](#control-flow)
-- [Performance](#performance)
-- [Testing](#testing)
-- [Patterns](#patterns)
+Condensed from [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) and [Effective Go](https://go.dev/doc/effective_go). Only rules that are non-obvious or commonly violated.
 
 ## Naming
 
-### Packages
-- Lowercase, single word, no underscores, no camelCase.
-- Singular (`http`, not `https`). Avoid generic names: `common`, `util`, `shared`, `lib`.
 - No stuttering: package `http` exports `Server`, not `HTTPServer`.
-
-### Variables and Functions
-- MixedCaps/mixedCaps, never underscores (except test names: `TestFoo_SubCase`).
-- Acronyms stay cased: `URL`, `HTTP`, `ID` (not `Url`, `Http`, `Id`).
 - Prefix unexported package-level vars with `_`: `var _defaultTimeout = 30 * time.Second`.
 - Exception: unexported error vars use `err` prefix: `var errNotFound = errors.New("not found")`.
-
-### Exported Names
-- Exported error vars: `Err` prefix (`ErrNotFound`).
-- Exported error types: `Error` suffix (`NotFoundError`).
-- Getters: `Owner()`, not `GetOwner()`. Setters: `SetOwner()`.
-
-### Printf-style Functions
-End names with `f` (`Wrapf`, `Logf`) to enable `go vet` format-string checking.
+- Printf-style functions end with `f` (`Wrapf`, `Logf`) to enable `go vet` format-string checking.
 
 ## Interfaces
 
-- Accept interfaces, return concrete types.
+- Accept interfaces, return concrete types. Define at the consumer.
 - Verify compliance at compile time: `var _ http.Handler = (*Handler)(nil)`.
-- Keep interfaces small — one or two methods. Define interfaces at the consumer, not the implementer.
-- Never use pointer-to-interface (`*io.Reader`).
+- Keep small — one or two methods. Never use pointer-to-interface (`*io.Reader`).
 - Avoid embedding interfaces in public structs.
 
 ## Error Handling
@@ -56,22 +28,20 @@ End names with `f` (`Wrapf`, `Logf`) to enable `go vet` format-string checking.
 ### Wrapping
 - Use `%w` to preserve the chain: `fmt.Errorf("open config: %w", err)`.
 - Use `%v` to intentionally opaque the underlying error.
+- ALWAYS add call-site context when wrapping. Bare `return err` loses the trace — wrap with what this function was doing: `fmt.Errorf("read user %d: %w", id, err)`.
 - No redundant prefixes: `"open file: %w"` not `"failed to open file: %w"`.
 
+### NEVER Blank-Capture a Return Value
+`_ = doSomething()` is forbidden. ALWAYS bubble up errors to the caller. The only exception: log the error explicitly and continue in a degraded state — never silently discard.
+
 ### Handle Once
-Do not both log and return an error. Return wrapped errors up; let the top-level caller decide to log. Only log when gracefully degrading.
+Do not both log and return an error. Wrap and propagate up; let the top-level caller log.
 
-### Always Use Comma-Ok for Type Assertions
-```go
-t, ok := i.(string)
-if !ok { /* handle */ }
-```
-
-### Don't Panic
-Return errors. Reserve `panic` for truly irrecoverable programmer errors or `init()` failures. In tests, use `t.Fatal`.
+### NEVER Panic
+`panic` means an unhandled error state. ALWAYS return errors. Only acceptable in `init()` for truly irrecoverable programmer errors. In tests, use `t.Fatal`.
 
 ### Exit Only in main()
-`os.Exit` and `log.Fatal` only in `main()`. Structure as:
+`os.Exit` and `log.Fatal` only in `main()`. Structure as `main() → run() error`:
 ```go
 func main() {
     if err := run(); err != nil {
@@ -80,47 +50,52 @@ func main() {
 }
 ```
 
+### Always Use Comma-Ok for Type Assertions
+```go
+t, ok := i.(string)
+if !ok { /* handle */ }
+```
+
+## Context
+
+- `context.Context` is ALWAYS the first parameter: `func DoThing(ctx context.Context, ...) error`.
+- NEVER store `context.Context` in a struct. Pass it through function calls.
+- NEVER use `context.TODO()` in production code — it exists for refactoring only.
+- Respect cancellation: check `ctx.Err()` or `select` with `ctx.Done()` in loops and long operations.
+- Derive child contexts for scoped work: `ctx, cancel := context.WithTimeout(ctx, 5*time.Second)`.
+
 ## Concurrency
 
-### Channel Size
-- Unbuffered (default) or size 1. Any other size requires explicit justification.
-
-### No Fire-and-Forget Goroutines
-Every goroutine must have a predictable lifetime and shutdown mechanism. Use `sync.WaitGroup` for multiple goroutines, `chan struct{}` for single.
-
-### No Goroutines in init()
-Spawn goroutines in constructors with explicit shutdown methods.
-
-### Zero-Value Mutexes
-`var mu sync.Mutex` — don't use `new(sync.Mutex)`. Embed as unexported field in structs used by pointer.
-
-### Avoid Mutable Globals
-Use dependency injection. Pass functions and values as parameters.
-
-### Atomic Operations
-Use `sync/atomic` types (`atomic.Bool`, `atomic.Int64`) for type safety over raw `atomic.AddInt64`.
+- **Channel size:** Unbuffered or size 1. Any other size requires explicit justification.
+- **No fire-and-forget goroutines.** Every goroutine needs a predictable lifetime and shutdown mechanism (`sync.WaitGroup`, `chan struct{}`).
+- **No goroutines in `init()`.** Spawn in constructors with explicit shutdown methods.
+- **Zero-value mutexes:** `var mu sync.Mutex` — embed as unexported field in structs used by pointer.
+- **Avoid mutable globals.** Use dependency injection.
+- **Atomic operations:** Use `sync/atomic` types (`atomic.Bool`, `atomic.Int64`) over raw `atomic.AddInt64`.
+- **Graceful shutdown:** Handle `os.Signal`, propagate cancellation via `context.Context`:
+```go
+ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+defer stop()
+```
 
 ## Functions and Methods
 
-### Function Ordering in Files
+### File Ordering
 1. Exported type/const/var declarations.
 2. `NewXYZ()` constructor immediately after type.
 3. Exported methods by call order.
 4. Unexported helpers at file end.
 
-### Functional Options for Complex APIs
-When 3+ optional parameters or anticipated growth:
+### Receiver Consistency
+All methods on a type MUST use the same receiver type. If any method needs a pointer receiver, ALL methods use pointer receivers. Use pointer receivers when the method mutates state, the struct is large, or for consistency.
+
+### Functional Options
+When 3+ optional parameters:
 ```go
 type Option func(*options)
 func WithCache(enabled bool) Option { return func(o *options) { o.cache = enabled } }
 func New(addr string, opts ...Option) *Client { ... }
 ```
-
-### Defer for Cleanup
-Always `defer` for resource cleanup (files, locks, connections). Overhead is negligible.
-
-### Avoid init()
-Prefer explicit initialization from `main()`. If `init()` is used, it must be deterministic, side-effect-free, and independent of other `init()` order.
 
 ## Types and Structs
 
@@ -131,16 +106,8 @@ user := User{FirstName: "John"}  // good
 user := User{"John", "", false}   // bad
 ```
 
-### Use `&T{}` Not `new(T)`
-```go
-user := &User{Name: "bar"}  // good
-```
-
 ### Field Tags
-Always annotate marshaled fields: `json:"price"`. Makes contracts explicit and survives renames.
-
-### Tag Format
-Enforce consistent casing: `json:"snake_case"`, `yaml:"snake_case"` (enforced by `tagliatelle` linter).
+Always annotate marshaled fields: `json:"price"`. Enforce `snake_case` for `json` and `yaml` tags (enforced by `tagliatelle`).
 
 ### Embedding
 - Embed at top of field list, separated by blank line.
@@ -154,85 +121,34 @@ const (
     Subtract
 )
 ```
-Zero value indicates uninitialized. Exception: when zero is the meaningful default.
+Zero value = uninitialized. Exception: when zero is the meaningful default.
 
 ### Use `time.Time` and `time.Duration`
 Never use `int` for time. For external APIs, include units in names: `IntervalMillis`.
 
 ## Control Flow
 
-### Guard Clauses — Reduce Nesting
-Handle errors/edge cases first, return early:
-```go
-if err != nil {
-    return err
-}
-// happy path
-```
-
-### No Unnecessary Else
-```go
-x := defaultVal
-if condition {
-    x = otherVal
-}
-```
-
-### Reduce Variable Scope
-Declare as close to first use as possible:
-```go
-if err := os.WriteFile(name, data, 0644); err != nil {
-    return err
-}
-```
-
 ### nil is a Valid Slice
 Return `nil`, not `[]int{}`. Check with `len(s) == 0`, not `s == nil`.
 
-## Performance
-
-- **strconv over fmt** for primitive-to-string conversions.
-- **Preallocate** slices and maps: `make([]T, 0, size)`, `make(map[K]V, size)`.
-- **Convert strings to bytes once** and reuse.
-- **Avoid repeated string concatenation** in loops — use `strings.Builder`.
-
-## Testing
-
-### Table-Driven Tests
+### NEVER Use nil to Imply Logic
+A nil value means absence of data, not a control flow signal. Always nil-check explicitly:
 ```go
-tests := []struct {
-    name  string
-    input string
-    want  string
-}{
-    {"empty", "", ""},
-    {"single", "a", "a"},
+// bad — nil used as implicit "skip" signal
+if handler != nil {
+    handler.Process(data)
 }
-for _, tt := range tests {
-    t.Run(tt.name, func(t *testing.T) {
-        got := MyFunc(tt.input)
-        assert.Equal(t, tt.want, got)
-    })
+
+// good — explicit check with clear intent
+if handler == nil {
+    return fmt.Errorf("handler is required")
 }
+handler.Process(data)
 ```
-
-Keep table entries simple. Complex cases with branching logic get their own test functions. Use `t.Parallel()` for safe tests.
-
-### Test Package Naming
-- Same package for whitebox: `package foo`
-- `_test` suffix for blackbox: `package foo_test`
-- Prefer blackbox tests for public API validation.
-
-### Assertions
-Use `testify/assert` and `testify/require`. `require` for preconditions that must pass; `assert` for the checks themselves.
-
-### Subtests
-Group related cases under a parent test with `t.Run()`. Enables selective execution and parallel runs.
 
 ## Patterns
 
 ### Copy Slices and Maps at Boundaries
-When receiving or returning slices/maps, copy to prevent aliasing:
 ```go
 func (d *Driver) SetTrips(trips []Trip) {
     d.trips = make([]Trip, len(trips))
@@ -240,31 +156,11 @@ func (d *Driver) SetTrips(trips []Trip) {
 }
 ```
 
-### Avoid Naked Parameters
-Use named constants or comment bare booleans:
-```go
-printInfo("foo", true /* isLocal */)
-```
-
-### Use Raw String Literals
-```go
-wantError := `unknown error:"test"`  // good
-wantError := "unknown error:\"test\""  // bad
-```
-
-### Format Strings as Constants
-```go
-const msgFormat = "user: %s"
-```
-
 ### Don't Shadow Built-In Names
 Never shadow `error`, `string`, `len`, `cap`, `new`, `make`, `copy`, `close`, etc.
 
 ### Import Grouping
-Three groups separated by blank lines:
+ALWAYS maintain three groups separated by blank lines (enforced by `gci` via `golangci-lint fmt ./...`):
 1. Standard library
 2. Third-party packages
-3. Internal packages (enforced by `gci` formatter)
-
-### Line Length
-Soft limit of 99 characters. Handled by `golines` formatter.
+3. Internal packages
