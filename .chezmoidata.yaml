@@ -17,6 +17,7 @@ global:
       - "fd"
       - "tmux"
       - "tree-sitter-cli"
+      - "btop"
     casks:
       - "1password"
       - "1password-cli"
