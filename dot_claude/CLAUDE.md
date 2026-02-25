@@ -38,3 +38,4 @@
   - Always remove dead code
   - Implement automated linting and formatting to enforce style consistency
   - Regularly update dependencies to the latest stable version unless doing so requires a refactor. Refactoring to update a dependency should be considered its own feature work
+- Prefer writing DRY code as often as possible, but do not sacrifice readability or code quality.
