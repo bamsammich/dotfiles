@@ -5,9 +5,9 @@ description: Review implementation plans and completed work for compliance with 
 
 # ADR Review
 
-## Activation Check
+## Guard
 
-Before activating, verify `docs/adr/` exists at the repo root. If it does not exist, skip silently.
+Verify `docs/adr/` exists at the repo root. If it does not exist, skip silently.
 
 ## Trigger Points
 
@@ -21,8 +21,8 @@ Before activating, verify `docs/adr/` exists at the repo root. If it does not ex
 ```
 Task(
   description: "Review plan against ADRs",
-  subagent_type: "general-purpose",
-  prompt: "/agents adr-review\n\nReview the following plan for ADR compliance:\n\n<plan>\n{plan content}\n</plan>"
+  subagent_type: "adr-review",
+  prompt: "Review the following plan for ADR compliance:\n\n<plan>\n{plan content}\n</plan>"
 )
 ```
 
@@ -31,8 +31,8 @@ Task(
 ```
 Task(
   description: "Review implementation against ADRs",
-  subagent_type: "general-purpose",
-  prompt: "/agents adr-review\n\nReview the implementation for ADR compliance. Examine the git diff of changes made during this work:\n\n<diff>\n{git diff output}\n</diff>"
+  subagent_type: "adr-review",
+  prompt: "Review the implementation for ADR compliance. Examine the git diff of changes made during this work:\n\n<diff>\n{git diff output}\n</diff>"
 )
 ```
 
