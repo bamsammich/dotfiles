@@ -1,15 +1,35 @@
+{{- $omarchy := not (not (stat (joinPath .chezmoi.homeDir ".local/share/omarchy"))) -}}
 key.txt.age
 
+{{/* ===== macOS-only: ignore on all Linux ===== */}}
 {{ if ne .chezmoi.os "darwin" }}
 .Brewfile
 .zshrc
 .zsh.d/**
 .config/aerospace/**
 .config/powershell/**
+.config/zed/**
 .pwsh/**
 {{ end }}
 
+{{/* ===== Linux-only: ignore on macOS ===== */}}
 {{ if ne .chezmoi.os "linux" }}
 .bashrc
 .bash.d/**
+{{ end }}
+
+{{/* ===== Omarchy: allowlist — only sync universal paths ===== */}}
+{{ if $omarchy }}
+**
+!.claude
+!.claude/**
+!.gitconfig
+!.config
+!.config/git
+!.config/git/**
+!.kube
+!.kube/**
+!decrypt-private-key.sh
+!install-packages.sh
+!bootstrap-yay.sh
 {{ end }}

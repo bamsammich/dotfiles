@@ -51,15 +51,8 @@ global:
       - "ripgrep"
       - "tmux"
       - "ttf-caskaydia-mono-nerd"
-      - "zsh"
   aur:
     packages:
-      - "1password"
-      - "1password-cli"
       - "ghq"
-      - "oh-my-posh-bin"
       - "tree-sitter-cli"
       - "ttf-hermit-nerd"
-      - "visual-studio-code-bin"
-      - "zed-preview-bin"
-      - "zen-browser-bin"
