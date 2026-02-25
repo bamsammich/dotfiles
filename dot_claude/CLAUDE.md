@@ -1,14 +1,10 @@
-## IMPORTANT
-
-- Always load adr and adr-review skills into context when working in a git repo
-
 ## Model Usage Policy
 
 - Always use the latest version of a model.
 - Use Opus model for all planning.
 - Use Sonnet model for complex exploration that requires distilling/summarizing data or making careful choices. Otherwise, use Haiku model.
 - Use Haiku model for executing a plan if the plan is simple and the content or codebase is not complex. Otherwise, use Sonnet model.
-- Use `/model` to switch immediately when a task requires a different level of reasoning (higher or lower).
+- Use `/model` to switch immediateyl when a task requires a different level of reasoning (higher or lower).
 
 ## Tone and Behavior
 
@@ -28,6 +24,12 @@
 
 - **Commits**: Use conventional format: <type>(<scope>): <subject> where type = feat|fix|docs|style|refactor|test|chore|perf. Subject: 50 chars max, imperative mood ("add" not "added"), no period. For small changes: one-line commit only. For complex changes: add body explaining what/why (72-char lines) and reference issues. Keep commits atomic (one logical change) and self-explanatory. Split into multiple commits if addressing different concerns.
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
+- **Authorship**: Never add a Co-Authored-By trailer for Claude or any AI to commit messages.
+
+## Architectural Decision Records (ADRs)
+
+- **Immutability**: ADRs that have been merged into the repo's default branch MUST NOT be modified, ever. The only permitted change to a merged ADR is updating its `status` field when it is superseded by a new ADR. To change a decision, write a new superseding ADR — never edit the original.
+- **Mandatory compliance check**: If `docs/adr/` exists in a repo, you MUST invoke the `adr-review` skill before finalizing any plan and before claiming any implementation is complete. This is not optional — treat it like running tests.
 
 ## Coding Practices
 
