@@ -18,6 +18,7 @@ global:
       - "tmux"
       - "tree-sitter-cli"
       - "btop"
+      - "lazygit"
     casks:
       - "1password"
       - "1password-cli"
