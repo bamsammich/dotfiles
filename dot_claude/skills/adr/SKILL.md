@@ -38,7 +38,7 @@ ADRs MUST be as short as possible. Target guidelines:
 
 - When a new ADR supersedes an existing one, set `supersedes: YYYYMMDD_<subject>.md` in the new ADR's frontmatter
 - Update the superseded ADR's frontmatter status to `superseded by YYYYMMDD_<subject>.md`
-- Accepted ADRs are **immutable** — never edit their content, only update the `status` field when superseded
+- ADRs merged into the default branch are **immutable** — never edit their content, only update the `status` field when superseded
 
 ## OVERVIEW.md Format
 
