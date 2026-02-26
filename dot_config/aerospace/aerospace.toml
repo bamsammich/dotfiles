@@ -205,10 +205,10 @@ alt-slash = 'layout tiles horizontal vertical'
 # Application Launchers (Omarchy-style hotkeys)
 # ---------------------------------------------------------------------------
 # SUPER + RETURN → Terminal
-alt-enter = 'exec-and-forget open -n -a Ghostty || open -n -a Terminal'
+alt-enter = 'exec-and-forget open -a Ghostty || open -a Terminal'
 
 # SUPER + SHIFT + B → Browser
-alt-shift-b = 'exec-and-forget open -a "Zen" || open -a Safari'
+alt-shift-b = 'exec-and-forget open -a Zen || open -a Safari'
 
 # SUPER + SHIFT + F → File manager
 alt-shift-f = 'exec-and-forget open -a Finder'
