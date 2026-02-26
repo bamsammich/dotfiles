@@ -1,10 +1,23 @@
 ## Model Usage Policy
 
-- Always use the latest version of a model.
-- Use Opus model for all planning.
-- Use Sonnet model for complex exploration that requires distilling/summarizing data or making careful choices. Otherwise, use Haiku model.
-- Use Haiku model for executing a plan if the plan is simple and the content or codebase is not complex. Otherwise, use Sonnet model.
-- Use `/model` to switch immediateyl when a task requires a different level of reasoning (higher or lower).
+Model selection applies in two contexts: **subagents** (Task tool) and **main conversation** (suggest the user run `/model`).
+
+### Subagent model selection (Task tool `model` parameter)
+
+| Model   | When to use                                                                                   |
+|---------|-----------------------------------------------------------------------------------------------|
+| `opus`  | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems   |
+| `sonnet`| Exploration requiring judgment (summarizing, comparing options), multi-step code changes, code review |
+| `haiku` | File lookups, simple grep/glob searches, straightforward single-file edits, mechanical tasks  |
+
+**Default to `haiku`** unless the task clearly requires deeper reasoning. When in doubt, prefer `sonnet` over `opus`.
+
+### Main conversation model
+
+If the current task no longer matches the active model's strengths, **tell the user** to switch with `/model` and explain why. Examples:
+- Planning phase begins → suggest Opus if not already active.
+- Plan is finalized and steps are mechanical → suggest Haiku or Sonnet.
+- Debugging hits a subtle or ambiguous root cause → suggest Opus or Sonnet.
 
 ## Tone and Behavior
 
