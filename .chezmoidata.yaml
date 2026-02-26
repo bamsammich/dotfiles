@@ -27,7 +27,7 @@ global:
       - "font-hurmit-nerd-font"
       - "obsidian"
       - "powershell"
-      - "ghostty@tip"
+      - "ghostty"
       - "zed@preview"
       - "zen"
       - "aerospace"
