@@ -29,7 +29,11 @@
 ## Architectural Decision Records (ADRs)
 
 - **Immutability**: ADRs that have been merged into the repo's default branch MUST NOT be modified, ever. The only permitted change to a merged ADR is updating its `status` field when it is superseded by a new ADR. To change a decision, write a new superseding ADR — never edit the original.
-- **Mandatory compliance check**: If `docs/adr/` exists in a repo, you MUST invoke the `adr-review` skill before finalizing any plan and before claiming any implementation is complete. This is not optional — treat it like running tests.
+- **Mandatory review gates** (only when `docs/adr/` exists in the repo):
+  1. **After writing a plan, before user approval**: Invoke the `adr-review` skill to dispatch the adr-review agent with the plan content. Do this BEFORE presenting the plan for approval or exiting plan mode.
+  2. **After implementation, before claiming completion**: Invoke the `adr-review` skill to dispatch the adr-review agent with the git diff. Do this BEFORE the verification-before-completion checklist.
+  These gates are non-negotiable — treat them like running tests. Skipping them is the same as skipping verification.
+- **New architectural decisions**: When the adr-review agent flags decisions not covered by existing ADRs, surface this to the user and offer to invoke the `adr` skill. Do not silently proceed.
 
 ## Coding Practices
 

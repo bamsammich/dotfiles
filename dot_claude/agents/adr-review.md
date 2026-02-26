@@ -1,6 +1,6 @@
 ---
 name: adr-review
-description: Reviews plans and implementations against existing Architectural Decision Records (ADRs) in docs/adr/ for compliance
+description: Reviews plans and implementations against existing Architectural Decision Records (ADRs) in docs/adr/ for compliance and coverage gaps
 model: sonnet
 ---
 
@@ -19,7 +19,8 @@ Review a plan or implementation against the active Architectural Decision Record
    - Does the plan/code contradict the chosen option in "Decision Outcome"?
    - Does it violate constraints implied by "Decision Drivers"?
    - Does it ignore acknowledged consequences?
-5. Return a concise report using the format below
+5. Check for **uncovered architectural decisions**: Does the plan/diff introduce choices about technology, patterns, protocols, or structure that are not addressed by any existing ADR? List these separately.
+6. Return a concise report using the format below
 
 ## Report Format
 
@@ -34,6 +35,11 @@ Review a plan or implementation against the active Architectural Decision Record
 - **[ADR title](filename)**: {what was proposed/implemented} contradicts {what the ADR decided}.
   Resolution: {new ADR needed | revise plan/fix implementation to use X}
 
+### Uncovered Decisions (if any)
+
+- **{decision summary}**: Plan chooses {X} but no ADR covers this area.
+  Recommendation: Consider creating an ADR if this is a significant, long-lived decision.
+
 ### Summary
 
 {1-2 sentences}
@@ -42,6 +48,6 @@ Review a plan or implementation against the active Architectural Decision Record
 ## Rules
 
 - Only report actual contradictions, not tangential concerns
-- If no deviations are found, return PASS with a one-line summary
+- If no deviations and no uncovered decisions are found, return PASS with a one-line summary
 - Never silently ignore deviations
-- Do not suggest creating ADRs for new decisions — that is the `adr` skill's job
+- Flag uncovered decisions only when they involve meaningful architectural choices (technology, patterns, protocols, structure) — not routine implementation details

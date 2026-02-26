@@ -1,6 +1,11 @@
 ---
 name: adr-review
-description: Review implementation plans and completed work for compliance with existing Architectural Decision Records (ADRs). Auto-activate in two cases (only if docs/adr/ exists in the repo): (1) When a plan is being written or reviewed — review the plan before implementation. (2) After a plan has been fully executed — review the resulting code changes to verify no ADRs were violated. Also activate when the user explicitly asks to check against ADRs. Do NOT activate if the repo has no docs/adr/ directory. Runs as a subagent to keep ADR content out of the main context window.
+description: >-
+  Review plans and implementations for ADR compliance. Invoked at two
+  mandatory gates defined in CLAUDE.md: (1) after writing a plan, before
+  user approval, and (2) after implementation, before claiming completion.
+  Only applies when docs/adr/ exists. Dispatches the adr-review agent as
+  a subagent to keep ADR content out of the main context window.
 ---
 
 # ADR Review
@@ -11,8 +16,10 @@ Verify `docs/adr/` exists at the repo root. If it does not exist, skip silently.
 
 ## Trigger Points
 
-1. **Pre-implementation**: When a plan is being written or reviewed, before work starts
-2. **Post-implementation**: After a plan has been fully executed, before claiming completion
+These correspond to the mandatory review gates in CLAUDE.md:
+
+1. **Pre-implementation**: After writing a plan, BEFORE presenting it for user approval or exiting plan mode
+2. **Post-implementation**: After executing a plan, BEFORE the verification-before-completion checklist or claiming completion
 
 ## How to Run
 
@@ -40,8 +47,20 @@ For the post-implementation review, generate the diff with `git diff <base-commi
 
 ## Handling Results
 
-The agent only reports deviations — it does not fix anything. When deviations are reported, the parent agent must surface them to the user and either:
+### Deviations
+
+The agent reports deviations — it does not fix anything. When deviations are reported, the parent agent must surface them to the user and either:
 1. **Write a new ADR** (using the `adr` skill) that supersedes the conflicting ADR — if the deviation is intentional
 2. **Fix the implementation** to comply with the existing ADR — if the deviation is unintentional
 
 Never silently proceed past deviations.
+
+### Uncovered Architectural Decisions
+
+If the agent flags architectural choices not covered by any existing ADR, surface them to the user:
+
+> "This plan introduces architectural decisions not covered by existing ADRs:
+> - [decision summary]
+> Would you like to create an ADR for any of these before proceeding?"
+
+If the user says yes, invoke the `adr` skill. If no, proceed — the user decides when ADRs are created.
