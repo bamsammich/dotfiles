@@ -2,6 +2,7 @@
 {{- $profileChoices := list "personal" "work" -}}
 {{- $profile := promptChoiceOnce . "profiles" "Which profile should be used for this machine" $profileChoices -}}
 {{- $opAccountId := promptStringOnce . "opAccountId" "Which 1Password account ID should be used for dotfiles" }}
+{{- $omarchy := not (not (stat (joinPath .chezmoi.homeDir ".local/share/omarchy"))) }}
 template:
   options:
   - "missingkey=invalid"
@@ -11,7 +12,7 @@ git:
 hooks:
   read-source-state:
     pre:
-      command: ".local/share/chezmoi/.install-password-manager.sh"
+      command: "{{ .chezmoi.sourceDir }}/.install-password-manager.sh"
 data:
   email: {{ $email | quote }}
   profile: {{ $profile | quote }}
@@ -26,5 +27,6 @@ data:
   aur:
     packages: []
   bashrc_snippet: ""
+  omarchy: {{ $omarchy }}
   onepassword:
     account: {{ $opAccountId | quote }}

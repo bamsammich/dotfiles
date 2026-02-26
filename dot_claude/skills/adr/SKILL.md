@@ -1,6 +1,6 @@
 ---
 name: adr
-description: Generate Architectural Decision Records (ADRs) in MADR format. Use ONLY when the user explicitly requests an ADR — e.g., "create an ADR", "record this decision", "write an ADR for this". Do NOT auto-trigger during planning, plan review, or architectural discussions. The user decides when to create ADRs. ADRs are written to docs/adr/ in the current git repository.
+description: Generate Architectural Decision Records (ADRs) in MADR format. Invoke when the user requests an ADR or when the adr-review skill surfaces uncovered architectural decisions and the user agrees to record them. Do NOT auto-create ADRs without user approval. ADRs are written to docs/adr/ in the current git repository.
 ---
 
 # Architectural Decision Records
@@ -38,7 +38,7 @@ ADRs MUST be as short as possible. Target guidelines:
 
 - When a new ADR supersedes an existing one, set `supersedes: YYYYMMDD_<subject>.md` in the new ADR's frontmatter
 - Update the superseded ADR's frontmatter status to `superseded by YYYYMMDD_<subject>.md`
-- Accepted ADRs are **immutable** — never edit their content, only update the `status` field when superseded
+- ADRs merged into the default branch are **immutable** — never edit their content, only update the `status` field when superseded
 
 ## OVERVIEW.md Format
 
