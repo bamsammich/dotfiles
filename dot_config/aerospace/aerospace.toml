@@ -169,7 +169,7 @@ alt-0 = 'workspace 10'
 
 # SUPER + TAB / SUPER + SHIFT + TAB → Next/Previous workspace
 alt-tab       = 'workspace next'
-alt-shift-tab = 'move-workspace-to-monitor next'
+alt-shift-tab = 'move-workspace-to-monitor --wrap-around next'
 
 # ---------------------------------------------------------------------------
 # Move Window to Workspace (and follow)
@@ -185,14 +185,6 @@ alt-shift-7 = 'move-node-to-workspace 7'
 alt-shift-8 = 'move-node-to-workspace 8'
 alt-shift-9 = 'move-node-to-workspace 9'
 alt-shift-0 = 'move-node-to-workspace 10'
-
-# ---------------------------------------------------------------------------
-# Move Workspace to Monitor (Multi-monitor)
-# ---------------------------------------------------------------------------
-# SUPER + SHIFT + ALT + Arrow → Move workspace to monitor
-# (Omarchy: movecurrentworkspacetomonitor l/r)
-alt-shift-cmd-h = 'move-workspace-to-monitor prev'
-alt-shift-cmd-l = 'move-workspace-to-monitor next'
 
 # ---------------------------------------------------------------------------
 # Layout Toggles
