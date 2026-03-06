@@ -23,8 +23,9 @@ Determine mode automatically:
 
 Read the `/bootstrap-greenfield` command from `~/.claude/commands/bootstrap-greenfield.md`. Extract the universal (non-`[PROJECT-SPECIFIC]`) sections:
 
-- Testing philosophy (all 5 layers, authorship table)
-- Implement command (pre-implementation gates, test scoping)
+- Testing philosophy (all 5 layers, authorship table, fixture strategy tiers)
+- Fixture manifest expectations (`tests/fixtures/README.md` structure and authorship constraint)
+- Implement command (pre-implementation gates including strategy-aware fixture gate, test scoping)
 - Plan command
 - Specify command
 - Amend, impact, review-adrs, record-fixtures commands
@@ -39,6 +40,7 @@ Read the `/bootstrap-greenfield` command from `~/.claude/commands/bootstrap-gree
 For each universal section, compare the canonical version against the project's current file. Identify:
 
 - **Missing content**: rules, gates, or workflow steps present in the canonical template but absent from the project file
+- **Missing fixture manifest**: If `tests/fixtures/README.md` does not exist, flag as MISSING. This file declares each adapter's fixture strategy and is required for strategy-aware gates.
 - **Contradictions**: project file says something that conflicts with the canonical template
 - **Additions**: project-specific content that should be preserved (port names, requirements, domain principles)
 - **Structural drift**: sections reordered, renamed, or merged in ways that break the expected structure
@@ -131,10 +133,16 @@ Generate a phased plan. Each phase is independently valuable — the human can s
 
 **Phase 4 — Test infrastructure (additive only)**
 
+- Generate `tests/fixtures/README.md` from detected external dependencies. Propose strategies:
+  - If `docker-compose.yml` or `docker-compose.test.yml` exists with test services → **local-service** (Tier 1)
+  - If test/sandbox environment variables detected (e.g., `STRIPE_TEST_KEY`, `*_SANDBOX_*`) → **sandbox** (Tier 2)
+  - If the dependency is a remote API with no sandbox → **cassettes** (Tier 3)
+  - For libraries with no network dependency → **local library**
+- Present the proposed fixture manifest to the human for review before writing
 - Create `tests/fixtures/` directory structure matching identified external dependencies
 - Create `tests/contracts/schemas/` with consumer contracts derived from any existing test mocks or recorded responses
 - Create `tests/properties/` placeholder — human will populate from specs
-- Tell human to run `/record-fixtures` for each external dependency
+- Tell human to run `/record-fixtures` for each external dependency that uses cassettes
 - Do NOT modify existing tests
 
 **Phase 5 — Incremental migration (code changes, opt-in per module)**
