@@ -4,17 +4,18 @@ Model selection applies in two contexts: **subagents** (Task tool) and **main co
 
 ### Subagent model selection (Task tool `model` parameter)
 
-| Model   | When to use                                                                                   |
-|---------|-----------------------------------------------------------------------------------------------|
-| `opus`  | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems   |
-| `sonnet`| Exploration requiring judgment (summarizing, comparing options), multi-step code changes, code review |
-| `haiku` | File lookups, simple grep/glob searches, straightforward single-file edits, mechanical tasks  |
+| Model    | When to use                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| `opus`   | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems          |
+| `sonnet` | Exploration requiring judgment (summarizing, comparing options), multi-step code changes, code review |
+| `haiku`  | File lookups, simple grep/glob searches, straightforward single-file edits, mechanical tasks          |
 
 **Default to `haiku`** unless the task clearly requires deeper reasoning. When in doubt, prefer `sonnet` over `opus`.
 
 ### Main conversation model
 
 If the current task no longer matches the active model's strengths, **tell the user** to switch with `/model` and explain why. Examples:
+
 - Planning phase begins → suggest Opus if not already active.
 - Plan is finalized and steps are mechanical → suggest Haiku or Sonnet.
 - Debugging hits a subtle or ambiguous root cause → suggest Opus or Sonnet.
@@ -22,16 +23,17 @@ If the current task no longer matches the active model's strengths, **tell the u
 ## Tone and Behavior
 
 - Criticism is welcome.
-  - Please tell me when I am wrong or mistaken, or even when you think I might be wrong or mistaken.
-  - Please tell me if there is a better approach than the one I am taking.
-  - Please tell me if there is a relevant standard or convention that I appear to be unaware of.
+  - Tell me when I am wrong or mistaken, or even when you think I might be wrong or mistaken.
+  - Tell me if there is a better approach than the one I am taking.
+  - Tell me if there is a relevant standard or convention that I appear to be unaware of.
 - Be skeptical.
 - Be thorough and complete.
 - Be concise.
   - Short summaries are OK, but don't give an extended breakdown unless we are working through the details of a plan.
   - Do not flatter, and do not give compliments unless I am specifically asking for your judgement.
   - Occasional pleasantries are fine.
-- Feel free to ask many questions. If you are in doubt of my intent, don't guess. Ask.
+- Ask questions. If you are in doubt of my intent, don't guess. Ask.
+  - Ask rounds of questions (max of 10 rounds) to get a complete understanding of what I'm asking you to do or what the problem is if you are unsure.
 
 ## Git
 
@@ -39,20 +41,65 @@ If the current task no longer matches the active model's strengths, **tell the u
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
 - **Authorship**: Never add a Co-Authored-By trailer for Claude or any AI to commit messages.
 
-## Architectural Decision Records (ADRs)
+## Workflow Orchestration
 
-- **Immutability**: ADRs that have been merged into the repo's default branch MUST NOT be modified, ever. The only permitted change to a merged ADR is updating its `status` field when it is superseded by a new ADR. To change a decision, write a new superseding ADR — never edit the original.
-- **Mandatory review gates** (only when `docs/adr/` exists in the repo):
-  1. **After writing a plan, before user approval**: Invoke the `adr-review` skill to dispatch the adr-review agent with the plan content. Do this BEFORE presenting the plan for approval or exiting plan mode.
-  2. **After implementation, before claiming completion**: Invoke the `adr-review` skill to dispatch the adr-review agent with the git diff. Do this BEFORE the verification-before-completion checklist.
-  These gates are non-negotiable — treat them like running tests. Skipping them is the same as skipping verification.
-- **New architectural decisions**: When the adr-review agent flags decisions not covered by existing ADRs, surface this to the user and offer to invoke the `adr` skill. Do not silently proceed.
+### 1. Plan Mode Default
 
-## Coding Practices
+- Enter Plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately -- don't keep pushing
+- Use plan mode for verification steps, not just building
+- Write details specs upfront to reduce ambiguity
 
-- Use best practices and modern, widely-accepted tooling for the language you're working in.
-- Practice codebase hygiene
-  - Always remove dead code
-  - Implement automated linting and formatting to enforce style consistency
-  - Regularly update dependencies to the latest stable version unless doing so requires a refactor. Refactoring to update a dependency should be considered its own feature work
-- Prefer writing DRY code as often as possible, but do not sacrifice readability or code quality.
+## 2. Subagent Strategy
+
+- Use subagents liberally to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+
+- After ANY correction from the user: update `tasks/lessons.md` with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review lessons at session start for relevant project
+
+### 4. Verification Before Done
+
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
+
+### 5. Demand Elegance (Balanced)
+
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes -- don't over-engineer
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+
+- Point at logs, errors, failing tests -- then resolve them
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
+
+## Task Management
+
+- **Plan First**: Write plan to `tasks/todo.md` with checkable items
+- **Verify Plans**: Check in before starting implementation
+- **Track Progress**: Mark items complete as you go
+- **Explain Changes**: High-level summary at each step
+- **Document Results**: Add review section to `tasks/todo.md`
+- **Capture Lessons**: Update `tasks/lessons` after corrections
+
+## Research
+
+- Research thoroughly and store findings in `docs/research/`
+
+## Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Don't game tests**: Tests prove that the system works, not that you can write tests that know how your code works. Write tests as if your methods are black-box.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
