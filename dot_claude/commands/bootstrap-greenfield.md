@@ -23,9 +23,8 @@ Given collected inputs, generate the bootstrap prompt below. Sections marked `[P
 
 ## OUTPUT: The bootstrap prompt
 
-Generate the following as a single copyable prompt:
+Execute the following phases directly. Fill in all [PROJECT-SPECIFIC] sections using the collected inputs. Create every file and directory specified.
 
-````
 You are bootstrapping a new project for fully autonomous AI development. Your job is to create the project scaffold — the "operating system" that will govern all future AI development sessions. Do NOT write any application code yet.
 
 The project: [PROJECT-SPECIFIC: Generate a single dense sentence capturing what the system does, what it ingests, what external systems it talks to, whether it uses AI at runtime, and what it outputs.]
@@ -97,16 +96,21 @@ The project: [PROJECT-SPECIFIC: Generate a single dense sentence capturing what 
 Structure it in this exact order:
 
 ### Section 1: Project purpose (1 line)
+
 [PROJECT-SPECIFIC: What the system does.]
 
 ### Section 2: Tech stack (3-5 lines)
+
 [PROJECT-SPECIFIC: Language, framework, key dependencies, test runner, mutation testing tool.]
 
 ### Section 3: Commands (copy-pasteable)
+
 ```bash
 [PROJECT-SPECIFIC: build, lint, and test commands for the chosen stack]
 ```
+
 Include these test targets regardless of stack:
+
 - test:unit — Core logic only, no mocks, no network
 - test:props — Property-based tests (100 examples default)
 - test:contract — Consumer contract validation per adapter
@@ -129,6 +133,7 @@ This project uses hexagonal (ports & adapters) architecture. This is the most im
 **`src/adapters/<service>/`**: Implementations of port interfaces. Each adapter is independently replaceable and testable.
 
 **Dependency rule:**
+
 ```
 core/ ──depends on──▶ ports/ (interfaces only)
 adapters/ ──implements──▶ ports/
@@ -154,6 +159,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 ### Section 6: Workflow rules (reproduce verbatim)
 
 **Before writing any code:**
+
 1. Read `specs/requirements/_index.md` — know what's built and what isn't
 2. Ensure the target requirement has a complete spec file. If not, run `/specify` first.
 3. Ensure scenarios exist in `specs/scenarios/` for the target requirement. If not, run `/specify` first.
@@ -164,6 +170,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 8. If anything in the spec is ambiguous or seems wrong: STOP and ask the human
 
 **Planning (`/plan`):**
+
 1. Search `docs/research/` for findings relevant to this requirement
 2. If investigation is needed for unfamiliar dependencies or patterns, conduct it and save to `docs/research/` before finalizing the plan
 3. Decompose the requirement into a task DAG
@@ -173,6 +180,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 7. Present to human for approval. Do not implement without approval.
 
 **Implementing (`/implement`):**
+
 1. Verify pre-requisites before writing code:
    - Scenarios for this requirement MUST exist in `specs/scenarios/`. If missing, stop and tell the human to run `/specify`.
    - Property-based tests MUST already exist in `tests/properties/`. If missing, stop and tell the human.
@@ -188,6 +196,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 8. After all tasks: update `specs/requirements/_index.md` status
 
 **Changing specs (`/amend`):**
+
 1. Human describes the change and rationale
 2. Run `/impact` to identify all affected code, tests, specs, and ADRs
 3. Generate amendment checklist at `specs/amendments/<id>.md`
@@ -195,6 +204,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 5. Work through checklist items — each is checked off as completed
 
 **When to write an ADR:**
+
 - New external dependency or service integration
 - Change to any port interface
 - Data model change that crosses port boundaries
@@ -202,6 +212,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 - Write the ADR FIRST, get human approval, THEN implement
 
 **Research capture:**
+
 - Before investigating ANY technical question, search `docs/research/` for existing findings first
 - After ANY investigation (API behavior, library evaluation, debugging root cause, architectural spike), create or update a file in `docs/research/`
 - Reference research files in ADRs, specs, and plan files where applicable
@@ -209,21 +220,21 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 
 ### Section 7: Where to find details (reproduce verbatim, as table)
 
-| Topic | Location |
-|-------|----------|
-| Testing stack details | `.claude/skills/testing-philosophy.md` |
-| Port/adapter patterns | `.claude/skills/hexagonal-architecture.md` |
-| Spec change process | `.claude/skills/spec-evolution.md` |
-| ADR format and rules | `.claude/skills/adr-workflow.md` |
-| Project constitution | `specs/constitution.md` |
-| Requirements registry | `specs/requirements/_index.md` |
-| Scenario specs | `specs/scenarios/` |
-| Architecture decisions | `docs/adr/` |
-| Research & findings | `docs/research/` |
-| Active plans | `specs/plans/` |
-| Pending amendments | `specs/amendments/` |
-| Fixture manifest | `tests/fixtures/README.md` |
-| Custom commands | `.claude/commands/` |
+| Topic                  | Location                                   |
+| ---------------------- | ------------------------------------------ |
+| Testing stack details  | `.claude/skills/testing-philosophy.md`     |
+| Port/adapter patterns  | `.claude/skills/hexagonal-architecture.md` |
+| Spec change process    | `.claude/skills/spec-evolution.md`         |
+| ADR format and rules   | `.claude/skills/adr-workflow.md`           |
+| Project constitution   | `specs/constitution.md`                    |
+| Requirements registry  | `specs/requirements/_index.md`             |
+| Scenario specs         | `specs/scenarios/`                         |
+| Architecture decisions | `docs/adr/`                                |
+| Research & findings    | `docs/research/`                           |
+| Active plans           | `specs/plans/`                             |
+| Pending amendments     | `specs/amendments/`                        |
+| Fixture manifest       | `tests/fixtures/README.md`                 |
+| Custom commands        | `.claude/commands/`                        |
 
 ### Section 8: Reminders (reproduce verbatim)
 
@@ -254,12 +265,12 @@ Integration tests use the fixture strategy declared in `tests/fixtures/README.md
 
 **Fixture strategies:**
 
-| Tier | Strategy | How tests interact | Cassettes? | TTL? |
-|------|----------|--------------------|------------|------|
-| 1 | Local instance | Hit real service running locally (Docker Compose / k8s) | No | No |
-| 2 | Provider sandbox | Hit vendor test environment, optionally record cassettes for CI speed | Optional | If recorded |
-| 3 | Recorded cassettes | Replay recorded HTTP interactions | Yes | Yes (30d default) |
-| — | Local library | Call library directly, no fixtures | No | No |
+| Tier | Strategy           | How tests interact                                                    | Cassettes? | TTL?              |
+| ---- | ------------------ | --------------------------------------------------------------------- | ---------- | ----------------- |
+| 1    | Local instance     | Hit real service running locally (Docker Compose / k8s)               | No         | No                |
+| 2    | Provider sandbox   | Hit vendor test environment, optionally record cassettes for CI speed | Optional   | If recorded       |
+| 3    | Recorded cassettes | Replay recorded HTTP interactions                                     | Yes        | Yes (30d default) |
+| —    | Local library      | Call library directly, no fixtures                                    | No         | No                |
 
 **For cassette-based adapters (Tier 3 + Tier 2 with recording):**
 All external API interactions use VCR cassettes (recorded from real services).
@@ -268,6 +279,7 @@ AI may write new test CASES using existing cassettes. AI may NEVER create synthe
 New API interactions require a human to run `/record-fixtures` against real services.
 
 Cassette envelope format:
+
 ```json
 {
   "meta": {
@@ -286,6 +298,7 @@ Cassette envelope format:
   ]
 }
 ```
+
 Cassettes are validated against `tests/fixtures/_cassette-schema.json`.
 
 **For local-service adapters (Tier 1):** Tests hit the real service. Infrastructure config (docker-compose, k8s manifests) must exist.
@@ -319,20 +332,21 @@ Authored by: **Human** — golden scenarios are curated and approved. AI never w
 
 **Summary: who writes what**
 
-| Layer | Test type | Authored by | AI may modify? |
-|-------|-----------|-------------|----------------|
-| 1 | Unit tests (example-based) | AI | Yes |
-| 2 | Integration test cases | AI | Cases only, never fixtures |
-| 3 | Contract schemas | Human | No |
-| 4 | Property-based tests | Human | No |
-| 5 | Semantic eval benchmarks | Human | No |
-| — | Scenario definitions (YAML) | Human | No |
-| — | Fixture manifest (README.md) | Human | No |
+| Layer | Test type                    | Authored by | AI may modify?             |
+| ----- | ---------------------------- | ----------- | -------------------------- |
+| 1     | Unit tests (example-based)   | AI          | Yes                        |
+| 2     | Integration test cases       | AI          | Cases only, never fixtures |
+| 3     | Contract schemas             | Human       | No                         |
+| 4     | Property-based tests         | Human       | No                         |
+| 5     | Semantic eval benchmarks     | Human       | No                         |
+| —     | Scenario definitions (YAML)  | Human       | No                         |
+| —     | Fixture manifest (README.md) | Human       | No                         |
 
 ### .claude/skills/hexagonal-architecture.md
 
 Write this file explaining the port/adapter pattern concretely for this project:
 [PROJECT-SPECIFIC: List each port by name, its responsibility, and its key operations.]
+
 - Core depends ONLY on port interfaces
 - Each adapter is independently replaceable and testable
 - Include concrete interface examples in the project's chosen language for each port
@@ -342,6 +356,7 @@ Write this file explaining the port/adapter pattern concretely for this project:
 Write this file with the following content:
 
 When a spec needs to change:
+
 1. Human describes the change and rationale
 2. `/amend` command is invoked, which:
    a. Appends an amendment entry to the spec with date, rationale, and diff
@@ -352,6 +367,7 @@ When a spec needs to change:
 4. Amendment is not "complete" until all checklist items are resolved
 
 Impact analysis heuristic:
+
 - Search codebase for imports/references to types defined in the changed spec
 - Check all test files that reference the changed feature
 - Check all ADRs that reference the changed spec
@@ -364,6 +380,7 @@ Impact analysis heuristic:
 Write this file with the following content:
 
 ADRs are required for:
+
 - Any new external dependency or service integration
 - Any change to port interfaces
 - Any data model change that crosses port boundaries
@@ -371,6 +388,7 @@ ADRs are required for:
 - Any non-obvious technical decision where alternatives were considered
 
 ADR format:
+
 - Title, Date, Status (proposed/accepted/superseded)
 - Context: what problem or decision point arose
 - Decision: what was chosen and why
@@ -389,12 +407,14 @@ Write this command file:
 This command creates or updates requirement specifications. It handles four invocation patterns:
 
 **Pattern 1: `/specify`** (no arguments)
+
 1. Ask the user: "Are we writing a specification for an existing requirement or a new one?"
 2. If existing: show the requirements table from `specs/requirements/_index.md` and ask which REQ to specify
 3. If new: ask the user to describe the requirement in their own words
 4. Proceed to the guided questionnaire (below)
 
 **Pattern 2: `/specify <requirements text>`** (free-form input, no REQ ID)
+
 1. Read `specs/requirements/_index.md`
 2. Determine if the provided text matches an existing requirement title/description
 3. If match found: confirm with the user — "This looks like it corresponds to REQ-NNN: <title>. Is that correct?"
@@ -403,12 +423,14 @@ This command creates or updates requirement specifications. It handles four invo
 6. Use the provided text as initial input and proceed to the guided questionnaire, skipping questions already answered by the input
 
 **Pattern 3: `/specify REQ-NNN`** (REQ ID only)
+
 1. Confirm the REQ ID exists in `specs/requirements/_index.md`
 2. If it doesn't exist, ask if the user wants to create it
 3. If the spec file already exists, show current content and ask what the user wants to add or change
 4. Proceed to the guided questionnaire
 
 **Pattern 4: `/specify REQ-NNN <requirements text>`** (REQ ID + free-form input)
+
 1. Confirm the REQ ID exists in `specs/requirements/_index.md`
 2. Use the provided text as initial input
 3. Proceed to the guided questionnaire, skipping questions already answered by the input
@@ -425,6 +447,7 @@ This command creates or updates requirement specifications. It handles four invo
 **Status check — before writing:**
 
 Read the REQ's current status from `specs/requirements/_index.md`:
+
 - **not-started**: Create the spec file normally.
 - **in-progress** or **completed**: Warn the user that this requirement has existing implementation. Ask: "This requirement is currently [status]. Updating the spec will require changes to existing code and tests. Proceed?" If yes, write the updated spec and then run `/impact` to identify all affected artifacts. Present the impact report to the user.
 
@@ -441,6 +464,7 @@ Read the REQ's current status from `specs/requirements/_index.md`:
 Write this command file:
 
 Read the full `specs/` directory and `docs/adr/` directory. Search `docs/research/` for findings relevant to the target requirement. Identify which requirements are not yet implemented (check `specs/requirements/_index.md`). For the requirement(s) the human specifies:
+
 1. If investigation is needed for unfamiliar dependencies or patterns, conduct it and save to `docs/research/` before proceeding
 2. Decompose into tasks as a DAG — identify which tasks depend on which
 3. For each task: specify files to create/modify, tests to write, port interfaces involved
@@ -453,6 +477,7 @@ Read the full `specs/` directory and `docs/adr/` directory. Search `docs/researc
 Write this command file:
 
 Read the plan file specified by the human (or the current active plan). For each unchecked task in dependency order:
+
 1. Read relevant specs, ADRs, research files, and existing code
 2. **Verify pre-requisites before writing code:**
    - Scenarios for this requirement MUST exist in `specs/scenarios/`. If missing, stop and tell the human to run `/specify` to define scenarios.
@@ -467,7 +492,7 @@ Read the plan file specified by the human (or the current active plan). For each
 3. Write/modify code following hexagonal architecture rules
 4. **Write/modify ONLY these test types:**
    - Unit tests in `tests/unit/` — pure input → output tests on `src/core/`. No mocks.
-   - Integration test *cases* in `tests/integration/` — new test scenarios using ONLY existing recorded fixtures. Never create synthetic API responses.
+   - Integration test _cases_ in `tests/integration/` — new test scenarios using ONLY existing recorded fixtures. Never create synthetic API responses.
    - Do NOT write or modify property-based tests, contract schemas, or fixture data.
 5. Run the full test suite
 6. If tests pass: check off the task in the plan, commit with a descriptive message referencing the requirement ID
@@ -480,6 +505,7 @@ Read the plan file specified by the human (or the current active plan). For each
 Write this command file:
 
 The human will describe a specification change and its rationale.
+
 1. Identify which spec file(s) need modification
 2. Append an amendment entry with: date, rationale, before/after diff
 3. Run `/impact` to generate the full impact analysis
@@ -492,6 +518,7 @@ The human will describe a specification change and its rationale.
 Write this command file:
 
 Given a spec change (file path + description of change):
+
 1. Parse the changed spec to identify modified types, interfaces, behaviors, or constraints
 2. Search `src/` for all files importing or referencing the affected types/interfaces
 3. Search `tests/` for all test files covering the affected feature
@@ -499,8 +526,8 @@ Given a spec change (file path + description of change):
 5. Search `docs/research/` for research files referencing the affected spec
 6. Search `specs/` for other specs that depend on the affected spec
 7. For each found file, describe specifically what would need to change
-7b. Search `scripts/` for recording scripts referencing affected adapters/services/scenarios
-7c. Search `tests/fixtures/README.md` for adapters related to the changed requirement
+   7b. Search `scripts/` for recording scripts referencing affected adapters/services/scenarios
+   7c. Search `tests/fixtures/README.md` for adapters related to the changed requirement
 8. Output a structured impact report with: file path, line numbers, description of required change, priority (breaking/non-breaking)
 9. Include a **Fixture impact** section listing: affected adapters, their fixture strategies, whether cassettes need re-recording, and whether infrastructure config needs updating
 
@@ -509,6 +536,7 @@ Given a spec change (file path + description of change):
 Write this command file:
 
 Read all ADR files in `docs/adr/` with status "accepted". Compare against the current plan or recent changes. For each ADR, verify:
+
 1. The plan/code doesn't contradict the decision
 2. If it does, flag it with: ADR number, the contradiction, and whether the ADR should be superseded or the plan revised
 3. Output a compliance report
@@ -522,6 +550,7 @@ This command manages fixture recording in multiple phases. Claude cannot call re
 ARGUMENTS: $ARGUMENTS
 
 **Phase 0 — Strategy triage (AI):**
+
 1. Read `tests/fixtures/README.md` to load the fixture manifest
 2. Identify which adapters are involved in the specified requirement/plan
 3. Categorize each adapter by its declared strategy:
@@ -532,6 +561,7 @@ ARGUMENTS: $ARGUMENTS
 4. If no adapters require recording, report "No fixture recording needed for this requirement" and stop
 
 **Phase 1 — Analysis (AI):**
+
 1. Read the requirement/plan specified in arguments (or prompt for which requirement)
 2. For adapters identified in Phase 0 as needing recording:
 3. Read existing cassettes in `tests/fixtures/` — diff against what's needed
@@ -543,8 +573,10 @@ ARGUMENTS: $ARGUMENTS
 
 **Phase 2 — Recording (Human):**
 For each manifest entry, the human either:
+
 - Runs `pnpm record-fixtures <service> <scenario>` (if the adapter is importable)
 - Or uses the provided curl commands and manually wraps in envelope format:
+
 ```json
 {
   "meta": {
@@ -558,10 +590,12 @@ For each manifest entry, the human either:
   "interactions": [{ "request": { ... }, "response": { ... } }]
 }
 ```
+
 Sanitization: strip `Authorization`, `X-Api-Key`, bearer tokens → `<REDACTED>`
 
 **Phase 3 — Validation (AI):**
 After the human records cassettes:
+
 1. Validate all new/updated cassettes against `tests/fixtures/_cassette-schema.json`
 2. Check sanitization — scan for tokens, API keys, secrets
 3. Verify completeness against the recording manifest from Phase 1
@@ -574,6 +608,7 @@ After the human records cassettes:
 **Immutable principles** (can only change with human-approved amendment):
 
 Always include these universal principles:
+
 1. External dependencies are accessed only through port interfaces
 2. Tests are the specification's enforcement mechanism — they are never weakened to make code pass
 3. Recorded fixtures are the only source of truth for external API behavior in tests
@@ -581,20 +616,23 @@ Always include these universal principles:
 5. Research findings are captured in `docs/research/` and referenced before re-investigating
 
 [PROJECT-SPECIFIC: Add 3-5 domain-specific principles based on the project type:
+
 - Security tools: conservative defaults, traceability, read-only analysis
 - Data pipelines: idempotency, graceful degradation on malformed input
 - User-facing systems: confirmation before destructive actions
 - AI-in-the-loop systems: confidence scoring, distinguishable from deterministic results, fallback when LLM unavailable]
 
 **Amendment log:**
-| # | Date | Principle affected | Change | Rationale | Approved by |
-|---|------|-------------------|--------|-----------|-------------|
+
+| #   | Date | Principle affected | Change | Rationale | Approved by |
+| --- | ---- | ------------------ | ------ | --------- | ----------- |
 
 ## PHASE 6: Write the requirements index and first spec
 
-### specs/requirements/_index.md
+### specs/requirements/\_index.md
 
 [PROJECT-SPECIFIC: Generate a requirements table with columns: ID, Title, Status (all "not-started"), Spec file, Plan file, Dependencies. Decompose into 8-15 requirements following these rules:
+
 - Each requirement is independently implementable and testable
 - Requirements form a DAG — identify dependencies explicitly
 - Start with ingest/parsing (no dependencies), then core logic, then integrations, then output
@@ -605,6 +643,7 @@ Always include these universal principles:
 ### specs/requirements/req-001.md
 
 [PROJECT-SPECIFIC: Write the first requirement (pick one with no dependencies) fully:
+
 - User story
 - Acceptance criteria in EARS format (When <trigger>, the system shall <response>)
 - Invariants (properties that must always hold)
@@ -616,13 +655,14 @@ Always include these universal principles:
 ### docs/adr/0001-initial-architecture.md
 
 Document the hexagonal architecture decision:
+
 - Context: AI-maintained codebase needs strict dependency boundaries to prevent test-gaming and ensure independent testability of core logic
 - [PROJECT-SPECIFIC: Add which dependencies might change, have unreliable APIs, or need independent testing]
 - Decision: Hexagonal (ports & adapters) with core/, ports/, adapters/ separation
 - Consequences: All external interactions are mockable at the port level; core is fully testable without any mocks; adapter changes don't affect core logic; new integrations only require new adapters
 - Alternatives: Layered architecture (rejected: too easy for AI to create leaky abstractions); direct SDK usage (rejected: impossible to test without hitting real services)
 
-### docs/adr/_template.md
+### docs/adr/\_template.md
 
 Write a reusable ADR template with sections: Title, Date, Status, Context, Decision, Consequences, Alternatives Considered, References.
 
@@ -631,6 +671,7 @@ Write a reusable ADR template with sections: Title, Date, Status, Context, Decis
 ### .github/workflows/ci.yml
 
 Implement gates in this order:
+
 1. Lint + type check
 2. Check fixtures (`check-fixtures`) — strategy-aware: checks cassette TTLs (Tier 3 + Tier 2 with recording), verifies local-service infrastructure exists (Tier 1), verifies sandbox config (Tier 2 direct). Local library adapters are skipped.
 3. Validate scenarios (`validate-scenarios`) — fail if traceability is broken
@@ -657,21 +698,26 @@ Jobs 2+3 run after lint, in parallel. Jobs 4+5+6 run after lint, in parallel. Jo
 **Triggered by:** bootstrap
 
 ## Summary
+
 <2-3 sentence takeaway>
 
 ## Findings
+
 <Full detail>
 
 ## Implications for this project
+
 <How findings constrain or inform decisions. Reference ADRs/specs.>
 
 ## Open questions
+
 <Unresolved items for future sessions.>
 ```
 
 ## FINAL INSTRUCTIONS
 
 After creating all files:
+
 1. Initialize a git repo and make the initial commit
 2. Print a summary of what was created and what the human should do next
 3. The human's next steps are:
@@ -681,7 +727,6 @@ After creating all files:
    d. Run `/plan REQ-001` to begin the first implementation cycle
 
 Do NOT write any application code. `src/` files should be empty or contain only port interface stubs. The scaffold IS the product of this session.
-````
 
 ## Post-generation checklist
 
