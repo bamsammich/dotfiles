@@ -84,6 +84,7 @@ The project: [PROJECT-SPECIFIC: Generate a single dense sentence capturing what 
 │   ├── contracts/
 │   │   └── schemas/
 │   └── fixtures/
+│       ├── README.md
 │       ├── _cassette-schema.json
 │       └── [PROJECT-SPECIFIC: One subdirectory per external dependency, matching adapters/]
 └── .github/
@@ -145,7 +146,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 - `tests/unit/` — tests `src/core/` only. No mocks. Pure input → output.
 - `tests/properties/` — invariants derived from specs. Express WHAT, never HOW. Never reference implementation internals.
 - `tests/contracts/` — validate each adapter's API calls against consumer contracts in `tests/contracts/schemas/`.
-- `tests/integration/` — use ONLY recorded fixtures from `tests/fixtures/`. Never invent API responses.
+- `tests/integration/` — use the fixture strategy declared in `tests/fixtures/README.md`. For cassettes: replay recorded fixtures. For local-service: hit the running service. For sandbox: hit sandbox directly. For local library: no fixture infrastructure needed. See `tests/fixtures/README.md` for each adapter's strategy.
 - Never delete or weaken a failing test. Fix the code. If stuck, stop and ask the human.
 - Never create synthetic external API responses. All fixtures come from real recordings via `/record-fixtures`.
 - Scenario definitions in `specs/scenarios/*.scenarios.yaml` are authored by humans. AI may not create or modify them.
@@ -221,6 +222,7 @@ These are non-negotiable. Read `.claude/skills/testing-philosophy.md` for full d
 | Research & findings | `docs/research/` |
 | Active plans | `specs/plans/` |
 | Pending amendments | `specs/amendments/` |
+| Fixture manifest | `tests/fixtures/README.md` |
 | Custom commands | `.claude/commands/` |
 
 ### Section 8: Reminders (reproduce verbatim)
@@ -244,12 +246,27 @@ Mutation testing must achieve 70%+ score on `src/core/`.
 Location: `tests/unit/`. Target: `src/core/` only. Mocks: none.
 Authored by: **AI during `/implement`** — validated by mutation testing and the other four layers.
 
-**Layer 2 — Integration tests with recorded fixtures**
+**Layer 2 — Integration tests with fixture strategies**
+
+Integration tests use the fixture strategy declared in `tests/fixtures/README.md`. Each adapter's strategy determines how tests interact with external dependencies.
+
+`tests/fixtures/README.md` is the source of truth for which strategy each adapter uses. Authored by: **Human**. AI never modifies this file.
+
+**Fixture strategies:**
+
+| Tier | Strategy | How tests interact | Cassettes? | TTL? |
+|------|----------|--------------------|------------|------|
+| 1 | Local instance | Hit real service running locally (Docker Compose / k8s) | No | No |
+| 2 | Provider sandbox | Hit vendor test environment, optionally record cassettes for CI speed | Optional | If recorded |
+| 3 | Recorded cassettes | Replay recorded HTTP interactions | Yes | Yes (30d default) |
+| — | Local library | Call library directly, no fixtures | No | No |
+
+**For cassette-based adapters (Tier 3 + Tier 2 with recording):**
 All external API interactions use VCR cassettes (recorded from real services).
 Cassettes have a 30-day TTL metadata field. Expired cassettes fail CI with a message to re-record.
 AI may write new test CASES using existing cassettes. AI may NEVER create synthetic API response payloads.
 New API interactions require a human to run `/record-fixtures` against real services.
-Location: `tests/integration/`. Fixtures: `tests/fixtures/<service>/<scenario>.json`.
+
 Cassette envelope format:
 ```json
 {
@@ -270,6 +287,14 @@ Cassette envelope format:
 }
 ```
 Cassettes are validated against `tests/fixtures/_cassette-schema.json`.
+
+**For local-service adapters (Tier 1):** Tests hit the real service. Infrastructure config (docker-compose, k8s manifests) must exist.
+
+**For sandbox adapters (Tier 2, direct):** Tests hit the vendor sandbox directly. Sandbox credentials must be configured.
+
+**For local library adapters:** No fixture infrastructure needed. Test with sample inputs directly.
+
+Location: `tests/integration/`. Fixtures: `tests/fixtures/<service>/<scenario>.json`.
 Authored by: **Fixtures recorded by human. Test cases written by AI during `/implement`** using only existing fixtures.
 
 **Layer 3 — Contract tests per adapter**
@@ -302,6 +327,7 @@ Authored by: **Human** — golden scenarios are curated and approved. AI never w
 | 4 | Property-based tests | Human | No |
 | 5 | Semantic eval benchmarks | Human | No |
 | — | Scenario definitions (YAML) | Human | No |
+| — | Fixture manifest (README.md) | Human | No |
 
 ### .claude/skills/hexagonal-architecture.md
 
@@ -431,7 +457,11 @@ Read the plan file specified by the human (or the current active plan). For each
 2. **Verify pre-requisites before writing code:**
    - Scenarios for this requirement MUST exist in `specs/scenarios/`. If missing, stop and tell the human to run `/specify` to define scenarios.
    - Property-based tests for this requirement MUST already exist in `tests/properties/` (derived from specs via `/specify`). If missing, stop and tell the human to define spec invariants first.
-   - Recorded fixtures for any external APIs this task touches MUST already exist in `tests/fixtures/`. If missing, stop and tell the human to run `/record-fixtures`.
+   - **Fixture gate (strategy-aware):** Read `tests/fixtures/README.md` for adapters involved in this task. Apply the appropriate gate per strategy:
+     - **cassettes** / **sandbox+recording**: Cassettes MUST exist in `tests/fixtures/`. If missing → stop, tell human to run `/record-fixtures`.
+     - **local-service**: Infrastructure config MUST exist (compose file or k8s manifests). If missing → stop, tell human.
+     - **sandbox (direct)**: Sandbox config documented. No cassette gate.
+     - **local library**: No gate.
    - Consumer contract schemas for involved adapters MUST already exist in `tests/contracts/schemas/`. If missing, stop and tell the human to derive them from recorded fixtures.
    - Run `validate-scenarios` to confirm traceability links are complete.
 3. Write/modify code following hexagonal architecture rules
@@ -469,7 +499,10 @@ Given a spec change (file path + description of change):
 5. Search `docs/research/` for research files referencing the affected spec
 6. Search `specs/` for other specs that depend on the affected spec
 7. For each found file, describe specifically what would need to change
+7b. Search `scripts/` for recording scripts referencing affected adapters/services/scenarios
+7c. Search `tests/fixtures/README.md` for adapters related to the changed requirement
 8. Output a structured impact report with: file path, line numbers, description of required change, priority (breaking/non-breaking)
+9. Include a **Fixture impact** section listing: affected adapters, their fixture strategies, whether cassettes need re-recording, and whether infrastructure config needs updating
 
 ### .claude/commands/review-adrs.md
 
@@ -484,13 +517,23 @@ Read all ADR files in `docs/adr/` with status "accepted". Compare against the cu
 
 Write this command file:
 
-This command manages VCR cassette recording in three phases. Claude cannot call real external APIs — recording requires human execution.
+This command manages fixture recording in multiple phases. Claude cannot call real external APIs — recording requires human execution.
 
 ARGUMENTS: $ARGUMENTS
 
+**Phase 0 — Strategy triage (AI):**
+1. Read `tests/fixtures/README.md` to load the fixture manifest
+2. Identify which adapters are involved in the specified requirement/plan
+3. Categorize each adapter by its declared strategy:
+   - **local library**: Skip entirely — no fixtures needed
+   - **local-service** (Tier 1): Skip recording. Report: "Ensure services are running. No cassettes to record."
+   - **sandbox (direct)** (Tier 2, no recording): Skip recording. Report: "Ensure sandbox credentials in `.env`. No cassettes to record."
+   - **sandbox (with recording)** (Tier 2) + **cassettes** (Tier 3): Proceed to Phase 1
+4. If no adapters require recording, report "No fixture recording needed for this requirement" and stop
+
 **Phase 1 — Analysis (AI):**
 1. Read the requirement/plan specified in arguments (or prompt for which requirement)
-2. Identify all external services and endpoints the requirement touches
+2. For adapters identified in Phase 0 as needing recording:
 3. Read existing cassettes in `tests/fixtures/` — diff against what's needed
 4. Check TTLs — flag any expired cassettes that need re-recording
 5. Output a **recording manifest**:
@@ -589,12 +632,12 @@ Write a reusable ADR template with sections: Title, Date, Status, Context, Decis
 
 Implement gates in this order:
 1. Lint + type check
-2. Check fixture expiry (`check-fixtures`) — fail if any cassette TTL is expired
+2. Check fixtures (`check-fixtures`) — strategy-aware: checks cassette TTLs (Tier 3 + Tier 2 with recording), verifies local-service infrastructure exists (Tier 1), verifies sandbox config (Tier 2 direct). Local library adapters are skipped.
 3. Validate scenarios (`validate-scenarios`) — fail if traceability is broken
 4. Unit tests (core only, no mocks, no network)
 5. Property-based tests (100 examples in CI)
 6. Contract tests (validate adapter calls against consumer contracts)
-7. Integration tests (recorded fixtures only — blocked by check-fixtures)
+7. Integration tests (fixture-strategy-aware — blocked by check-fixtures). For local-service projects: add `docker compose up -d --wait` before integration tests and teardown after.
 8. Mutation testing on src/core/ (fail if score < 70%)
 
 Jobs 2+3 run after lint, in parallel. Jobs 4+5+6 run after lint, in parallel. Job 7 requires 2+4+5+6. Job 8 requires 4+5.
