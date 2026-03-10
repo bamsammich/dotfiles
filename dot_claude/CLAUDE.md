@@ -6,7 +6,7 @@ Model selection applies in two contexts: **subagents** (Task tool) and **main co
 
 | Model    | When to use                                                                                           |
 | -------- | ----------------------------------------------------------------------------------------------------- |
-| `opus`   | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems          |
+| `opus`   | Planning, architectural decisions, research, complex multi-file refactors, ambiguous or novel problems          |
 | `sonnet` | Exploration requiring judgment (summarizing, comparing options), multi-step code changes, code review |
 | `haiku`  | File lookups, simple grep/glob searches, straightforward single-file edits, mechanical tasks          |
 
@@ -84,6 +84,11 @@ If the current task no longer matches the active model's strengths, **tell the u
 - Zero context switching required from the user
 - Go fix failing CI tests without being told how
 
+### 7. Knowledge Cache
+
+- Check `docs/research/` before exploring. Write to it after investigating.
+- This is not optional. Skipping it wastes tokens and time in future sessions.
+
 ## Task Management
 
 - **Plan First**: Write plan to `tasks/todo.md` with checkable items
@@ -93,9 +98,30 @@ If the current task no longer matches the active model's strengths, **tell the u
 - **Document Results**: Add review section to `tasks/todo.md`
 - **Capture Lessons**: Update `tasks/lessons` after corrections
 
-## Research
+## Knowledge Cache (`docs/research/`)
 
-- Research thoroughly and store findings in `docs/research/`
+This is a persistent cache of findings from previous sessions. It saves significant
+time and tokens. Treat it like a build cache — check before rebuilding.
+
+### Rules (MANDATORY)
+
+1. **BEFORE any exploration or external lookup**: Check `docs/research/` for existing
+   findings. This includes before using Explore agents, WebSearch, WebFetch, or any
+   multi-step investigation. A quick `ls` or glob is sufficient.
+2. **AFTER any non-trivial investigation** (3+ tool calls to answer a question): Write
+   a summary to `docs/research/<topic>.md`. Include: what was found, key file paths,
+   decisions made, and date.
+3. **File naming**: Use lowercase kebab-case describing the topic
+   (e.g., `auth-flow.md`, `database-schema.md`, `api-rate-limits.md`).
+4. **Freshness**: Note the date when writing. When reading cached findings older than
+   the current task's relevance window, verify key claims still hold.
+
+### What qualifies as "non-trivial investigation"
+
+- Exploring how a system/feature/library works
+- Comparing options or approaches
+- Debugging that required understanding unfamiliar code
+- Any findings you'd want if you had to redo this task tomorrow
 
 ## Core Principles
 
