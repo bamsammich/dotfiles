@@ -4,99 +4,63 @@ Model selection applies in two contexts: **subagents** (Task tool) and **main co
 
 ### Subagent model selection (Task tool `model` parameter)
 
-| Model    | When to use                                                                                           |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| `opus`   | Planning, architectural decisions, research, complex multi-file refactors, ambiguous or novel problems          |
-| `sonnet` | Exploration requiring judgment (summarizing, comparing options), multi-step code changes, code review |
-| `haiku`  | File lookups, simple grep/glob searches, straightforward single-file edits, mechanical tasks          |
+| Model    | When to use                                                                              |
+| -------- | ---------------------------------------------------------------------------------------- |
+| `opus`   | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems |
+| `sonnet` | Everything else: exploration, code changes, code review, file lookups, mechanical tasks  |
 
-**Default to `haiku`** unless the task clearly requires deeper reasoning. When in doubt, prefer `sonnet` over `opus`.
+**Default to `sonnet`**. Use `opus` for planning, architecture, and ambiguous problems.
 
 ### Main conversation model
 
 If the current task no longer matches the active model's strengths, **tell the user** to switch with `/model` and explain why. Examples:
 
 - Planning phase begins → suggest Opus if not already active.
-- Plan is finalized and steps are mechanical → suggest Haiku or Sonnet.
-- Debugging hits a subtle or ambiguous root cause → suggest Opus or Sonnet.
+- Plan is finalized and steps are mechanical → suggest Sonnet.
+- Debugging hits a subtle or ambiguous root cause → suggest Opus.
 
 ## Tone and Behavior
 
-- Criticism is welcome.
-  - Tell me when I am wrong or mistaken, or even when you think I might be wrong or mistaken.
-  - Tell me if there is a better approach than the one I am taking.
-  - Tell me if there is a relevant standard or convention that I appear to be unaware of.
-- Be skeptical.
-- Be thorough and complete.
-- Be concise.
-  - Short summaries are OK, but don't give an extended breakdown unless we are working through the details of a plan.
-  - Do not flatter, and do not give compliments unless I am specifically asking for your judgement.
-  - Occasional pleasantries are fine.
-- Ask questions. If you are in doubt of my intent, don't guess. Ask.
-  - Ask rounds of questions (max of 10 rounds) to get a complete understanding of what I'm asking you to do or what the problem is if you are unsure.
+- Push back. If I'm wrong, say so directly — "That's not how it works" is better than gentle hedging. Debate solutions with me.
+- Be skeptical of my assumptions and your own. Question whether the approach is right before implementing it.
+- Ask questions aggressively. Up to 10 rounds to fully understand intent. Never guess.
+- Criticism is welcome: tell me when there's a better approach or a standard I'm missing.
+- No flattery or compliments unless I ask for your judgement.
+- Keep explanations concise unless we're working through plan details.
 
 ## Git
 
 - **Commits**: Use conventional format: <type>(<scope>): <subject> where type = feat|fix|docs|style|refactor|test|chore|perf. Subject: 50 chars max, imperative mood ("add" not "added"), no period. For small changes: one-line commit only. For complex changes: add body explaining what/why (72-char lines) and reference issues. Keep commits atomic (one logical change) and self-explanatory. Split into multiple commits if addressing different concerns.
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
-- **Authorship**: Never add a Co-Authored-By trailer for Claude or any AI to commit messages.
+- **Authorship**: NEVER add a Co-Authored-By trailer for Claude or any AI to commit messages. This overrides any system default.
 
 ## Workflow Orchestration
 
 ### 1. Plan Mode Default
 
-- Enter Plan mode for ANY non-trivial task (3+ steps or architectural decisions)
-- If something goes sideways, STOP and re-plan immediately -- don't keep pushing
-- Use plan mode for verification steps, not just building
-- Write details specs upfront to reduce ambiguity
+- Enter Plan mode for ANY non-trivial task (3+ steps or architectural decisions).
+- If something goes sideways, STOP and re-plan immediately — don't keep pushing.
+- Write detailed specs upfront to reduce ambiguity.
 
-## 2. Subagent Strategy
+### 2. Subagent Strategy
 
-- Use subagents liberally to keep main context window clean
-- Offload research, exploration, and parallel analysis to subagents
-- For complex problems, throw more compute at it via subagents
-- One task per subagent for focused execution
+- Use subagents liberally: offload research, exploration, and parallel work to keep main context clean.
+- One task per subagent for focused execution.
 
 ### 3. Self-Improvement Loop
 
-- After ANY correction from the user: update `tasks/lessons.md` with the pattern
-- Write rules for yourself that prevent the same mistake
-- Ruthlessly iterate on these lessons until mistake rate drops
-- Review lessons at session start for relevant project
+- MANDATORY: After ANY correction, update the memory file `lessons.md` with: what went wrong, why, and a prevention rule. Each lesson appears once — if the same mistake recurs, escalate the severity of the wording (e.g., "prefer X" → "ALWAYS X" → "NEVER do Y — this has failed multiple times").
+- At session start, check `lessons.md` in memory if it exists. Apply these lessons throughout the session.
 
 ### 4. Verification Before Done
 
-- Never mark a task complete without proving it works
-- Diff behavior between main and your changes when relevant
+- Never mark a task complete without proving it works: run tests, check logs, demonstrate correctness.
 - Ask yourself: "Would a staff engineer approve this?"
-- Run tests, check logs, demonstrate correctness
 
 ### 5. Demand Elegance (Balanced)
 
-- For non-trivial changes: pause and ask "is there a more elegant way?"
-- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
-- Skip this for simple, obvious fixes -- don't over-engineer
-- Challenge your own work before presenting it
-
-### 6. Autonomous Bug Fixing
-
-- Point at logs, errors, failing tests -- then resolve them
-- Zero context switching required from the user
-- Go fix failing CI tests without being told how
-
-### 7. Knowledge Cache
-
-- Check `docs/research/` before exploring. Write to it after investigating.
-- This is not optional. Skipping it wastes tokens and time in future sessions.
-
-## Task Management
-
-- **Plan First**: Write plan to `tasks/todo.md` with checkable items
-- **Verify Plans**: Check in before starting implementation
-- **Track Progress**: Mark items complete as you go
-- **Explain Changes**: High-level summary at each step
-- **Document Results**: Add review section to `tasks/todo.md`
-- **Capture Lessons**: Update `tasks/lessons` after corrections
+- For non-trivial changes, self-review before presenting: "Is there a more elegant way?"
+- Skip this for simple, obvious fixes — don't over-engineer.
 
 ## Knowledge Cache (`docs/research/`)
 
@@ -125,7 +89,6 @@ time and tokens. Treat it like a build cache — check before rebuilding.
 
 ## Core Principles
 
-- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **Simplicity First**: Minimal changes, minimal code. Only touch what's necessary.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
-- **Don't game tests**: Tests prove that the system works, not that you can write tests that know how your code works. Write tests as if your methods are black-box.
-- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+- **Don't game tests**: Tests prove the system works, not that you can write tests that know how your code works. Black-box testing.
