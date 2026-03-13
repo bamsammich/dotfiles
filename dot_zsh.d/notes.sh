@@ -18,9 +18,10 @@ note() {
   local file="$dir/$(date +%F).md" # e.g., 2025-07-31.md
   mkdir -p "$dir"
 
-  # Create file with a simple header if it doesn't exist
+  # Create file from template if it doesn't exist
   if [ ! -f "$file" ]; then
-    printf "# %s\n\n" "$(date '+%A, %B %-d, %Y')" >>"$file"
+    local tmpl="${DAILY_NOTE_TEMPLATE:?}"
+    cp "$tmpl" "$file"
   fi
 
   # If the arg is a URL, auto-format as a markdown link
@@ -53,7 +54,10 @@ noteon() {
   local dir="${DAILY_NOTE_DIR:?}"
   local file="$dir/$d.md"
   mkdir -p "$dir"
-  [ -f "$file" ] || printf "# %s\n\n" "$(date -j -f %F "$d" +%A,\ %B\ %-d,\ %Y 2>/dev/null || echo "$d")" >>"$file"
+  if [ ! -f "$file" ]; then
+    local tmpl="${DAILY_NOTE_TEMPLATE:?}"
+    cp "$tmpl" "$file"
+  fi
 
   # Add tags if they exist
   local hashtags
