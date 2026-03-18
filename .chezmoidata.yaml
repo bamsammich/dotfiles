@@ -19,6 +19,7 @@ global:
       - "tree-sitter-cli"
       - "btop"
       - "lazygit"
+      - "bash"
     casks:
       - "1password"
       - "1password-cli"
