@@ -24,6 +24,9 @@ note() {
     cp "$tmpl" "$file"
   fi
 
+  # Ensure file ends with a newline before appending
+  [ -s "$file" ] && [ "$(tail -c 1 "$file")" != "" ] && printf "\n" >>"$file"
+
   # If the arg is a URL, auto-format as a markdown link
   local text="$*"
   if echo "$text" | grep -Eq '^https?://'; then
@@ -58,6 +61,9 @@ noteon() {
     local tmpl="${DAILY_NOTE_TEMPLATE:?}"
     cp "$tmpl" "$file"
   fi
+
+  # Ensure file ends with a newline before appending
+  [ -s "$file" ] && [ "$(tail -c 1 "$file")" != "" ] && printf "\n" >>"$file"
 
   # Add tags if they exist
   local hashtags
