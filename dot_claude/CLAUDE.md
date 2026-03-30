@@ -98,4 +98,5 @@ time and tokens. Treat it like a build cache — check before rebuilding.
 - **Simplicity First**: Minimal changes, minimal code. Only touch what's necessary.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Don't game tests**: Tests prove the system works, not that you can write tests that know how your code works. Black-box testing.
+- **Compatibility is a migration, not architecture**: Change interfaces in convergent phases (add new → migrate consumers → remove old). Track the removal phase as a work item — compatibility code without a scheduled resolution is tech debt by another name.
 - **Specs are immutable from Claude's side**: When a project has specs or acceptance criteria, code conforms to specs — never modify specs to make code pass. Specs change only when requirements change (user/stakeholder decision). Use [speclang](https://github.com/bamsammich/speclang) to define specifications when a project has no existing spec framework.
