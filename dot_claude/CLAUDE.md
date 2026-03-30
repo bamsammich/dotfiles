@@ -46,18 +46,24 @@ If the current task no longer matches the active model's strengths, **tell the u
 
 - Use subagents liberally: offload research, exploration, and parallel work to keep main context clean.
 - One task per subagent for focused execution.
+- The orchestrator does not write production or test code. Delegate implementation to subagents; review their output.
 
-### 3. Self-Improvement Loop
+### 3. Durable Work Tracking
+
+- Define work in a persistent, human-accessible system (GitHub Issues, Linear, etc.) before implementation. Each unit of work should be reviewable and commentable by humans — this is how task-specific context flows back to Claude across sessions.
+- In-session task tracking (TaskCreate) is for local progress only, never the source of truth.
+
+### 4. Self-Improvement Loop
 
 - MANDATORY: After ANY correction, update the memory file `lessons.md` with: what went wrong, why, and a prevention rule. Each lesson appears once — if the same mistake recurs, escalate the severity of the wording (e.g., "prefer X" → "ALWAYS X" → "NEVER do Y — this has failed multiple times").
 - At session start, check `lessons.md` in memory if it exists. Apply these lessons throughout the session.
 
-### 4. Verification Before Done
+### 5. Verification Before Done
 
-- Never mark a task complete without proving it works: run tests, check logs, demonstrate correctness.
+- Unit tests passing is not verification. Prove the happy path works end-to-end — integration seams (wiring, plumbing, glue code) are where things break. If CI exists, `gh run watch --exit-status` before closing issues.
 - Ask yourself: "Would a staff engineer approve this?"
 
-### 5. Demand Elegance (Balanced)
+### 6. Demand Elegance (Balanced)
 
 - For non-trivial changes, self-review before presenting: "Is there a more elegant way?"
 - Skip this for simple, obvious fixes — don't over-engineer.
@@ -92,3 +98,4 @@ time and tokens. Treat it like a build cache — check before rebuilding.
 - **Simplicity First**: Minimal changes, minimal code. Only touch what's necessary.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Don't game tests**: Tests prove the system works, not that you can write tests that know how your code works. Black-box testing.
+- **Specs are immutable from Claude's side**: When a project has specs or acceptance criteria, code conforms to specs — never modify specs to make code pass. Specs change only when requirements change (user/stakeholder decision). Use [speclang](https://github.com/bamsammich/speclang) to define specifications when a project has no existing spec framework.
