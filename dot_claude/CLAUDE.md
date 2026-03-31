@@ -65,6 +65,9 @@ If the current task no longer matches the active model's strengths, **tell the u
 
 - MANDATORY: After ANY correction, update the memory file `lessons.md` with: what went wrong, why, and a prevention rule. Each lesson appears once — if the same mistake recurs, escalate the severity of the wording (e.g., "prefer X" → "ALWAYS X" → "NEVER do Y — this has failed multiple times").
 - At session start, check `lessons.md` in memory if it exists. Apply these lessons throughout the session.
+- After updating `lessons.md`, also mirror the content to `/lessons/projects/{project-name}.md` in the Obsidian vault via MCP. If MCP is unavailable, skip silently — the project's `lessons.md` is sufficient. Mirror on next available session.
+- When mirroring a lesson, check `/lessons/synthesis/` in the vault for existing topic-organized living docs (e.g., `quality-gates.md`, `verification.md`). If the new lesson matches an existing theme, update that living doc — integrate the new content, don't just append. Include a backlink to the project lesson file. If no matching theme exists but the lesson represents a cross-project pattern, create a new living doc for it.
+- Claude does NOT modify `~/.claude/CLAUDE.md` autonomously. The `/lessons/synthesis/` docs are a recommendation surface — flag patterns to the user for review and manual promotion to global rules.
 
 ### 5. Verification Before Done
 
@@ -76,13 +79,14 @@ If the current task no longer matches the active model's strengths, **tell the u
 - Before presenting non-trivial changes, check for: unnecessary indirection, duplicated patterns that should be extracted, and simpler approaches that achieve the same result.
 - Skip for simple, obvious fixes.
 
-## Knowledge Cache (`docs/research/`)
+## Knowledge Cache (Obsidian Vault)
 
-Never redo investigation that's already been done. Before any exploration or external lookup, check for existing findings. After any non-trivial investigation (3+ tool calls), persist a summary for future sessions.
+Never redo investigation that's already been done. Research findings are stored in the Obsidian work vault via MCP, organized by project. The vault path is configured in the MCP server — these instructions are vault-agnostic.
 
 ### Rules (MANDATORY)
 
-1. **BEFORE exploring**: Check `docs/research/` for existing findings. A quick `ls` or glob is sufficient.
-2. **AFTER non-trivial investigation**: Write a summary to `docs/research/<topic>.md` with: findings, key file paths, decisions, and date. Use lowercase kebab-case filenames.
+1. **BEFORE exploring**: Search the Obsidian vault via MCP (`search` or `complex_search`) for existing findings on the topic. If MCP is unavailable, check `docs/research/` locally as a fallback.
+2. **AFTER non-trivial investigation** (3+ tool calls): Write a summary to `/research/{project-name}/{topic}.md` in the vault via MCP. Use lowercase kebab-case for filenames. Each file must be self-contained: date, project context, key findings, relevant file paths, and decisions made. For findings not tied to a specific project, use `/research/cross-project/{topic}.md`.
 3. **Freshness**: When reading cached findings, verify key claims still hold before acting on them.
-4. **No project directory?** If `docs/research/` doesn't exist for the current context, use memory instead — the principle is the same.
+4. **MCP unavailable**: If MCP tools fail or are not available, fall back to writing `docs/research/{topic}.md` locally in the project repo. Warn the user: "Obsidian isn't available — writing research locally. Start Obsidian when you can so I can sync."
+5. **Catch-up on session start**: If MCP is available, check for any `docs/research/*.md` files in the current project. If found, tell the user and migrate them to the vault — read each file, write to `/research/{project-name}/{topic}.md` via MCP, and delete the local copy only after confirming the MCP write succeeded. Proceed unless the user declines.
