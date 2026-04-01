@@ -4,10 +4,10 @@ Model selection applies in two contexts: **subagents** (Task tool) and **main co
 
 ### Subagent model selection (Task tool `model` parameter)
 
-| Model    | When to use                                                                              |
-| -------- | ---------------------------------------------------------------------------------------- |
+| Model    | When to use                                                                                  |
+| -------- | -------------------------------------------------------------------------------------------- |
 | `opus`   | Planning, architectural decisions, complex multi-file refactors, ambiguous or novel problems |
-| `sonnet` | Everything else: exploration, code changes, code review, file lookups, mechanical tasks  |
+| `sonnet` | Everything else: exploration, code changes, code review, file lookups, mechanical tasks      |
 
 **Default to `sonnet`**. Use `opus` for planning, architecture, and ambiguous problems.
 
@@ -90,3 +90,5 @@ Never redo investigation that's already been done. Research findings are stored 
 3. **Freshness**: When reading cached findings, verify key claims still hold before acting on them.
 4. **MCP unavailable**: If MCP tools fail or are not available, fall back to writing `docs/research/{topic}.md` locally in the project repo. Warn the user: "Obsidian isn't available — writing research locally. Start Obsidian when you can so I can sync."
 5. **Catch-up on session start**: If MCP is available, check for any `docs/research/*.md` files in the current project. If found, tell the user and migrate them to the vault — read each file, write to `/research/{project-name}/{topic}.md` via MCP, and delete the local copy only after confirming the MCP write succeeded. Proceed unless the user declines.
+
+@RTK.md
