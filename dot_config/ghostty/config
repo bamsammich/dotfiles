@@ -2,4 +2,4 @@
 custom-shader = shaders/ghostty-shaders/in-game-crt-cursor.glsl
 theme = Everforest Dark Hard
 background-opacity = 0.8
-background-blur = 20
+background-blur = 40
