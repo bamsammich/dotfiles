@@ -17,7 +17,7 @@ require("lazy").setup({
         "LazyVim/LazyVim",
         import = "lazyvim.plugins",
         opts = {
-            colorscheme = "astronaut-noir",
+            colorscheme = "onedark_vivid",
         },
     }, -- import/override with your plugins
     {
@@ -33,7 +33,7 @@ require("lazy").setup({
         -- version = "*", -- try installing the latest stable version for plugins that support semver
     },
     install = {
-        colorscheme = {"astronaut-noir", "habamax"}
+        colorscheme = {"onedark_vivid", "habamax"}
     },
     checker = {
         enabled = true, -- check for plugin updates periodically
