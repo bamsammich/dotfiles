@@ -1,5 +1,5 @@
 # custom-shader = shaders/KroneCorylus/ghostty-shader-playground/public/shaders/cursor_smear_fade.glsl
 custom-shader = shaders/ghostty-shaders/in-game-crt-cursor.glsl
-theme = Atom One Dark
+theme = Everforest Dark Hard
 background-opacity = 0.8
 background-blur = true
