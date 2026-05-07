@@ -68,6 +68,8 @@ Read `references/style-guide.md` for the complete condensed rules. Key principle
 - **Exit only in `main()`** — structure as `main() → run() error`.
 - **Avoid `init()`** — prefer explicit initialization.
 - **Enums start at 1** (`iota + 1`) so zero value indicates uninitialized.
+- **Indirection earns its name.** Helpers, wrappers, pass-through methods, and one-implementation interfaces must add reuse, real abstraction, hidden inessential detail, or clarified intent beyond what the underlying call already conveys. A one-line wrapper that only renames the underlying call is noise — inline it. Wrappers that exist only to log-and-swallow are this same anti-pattern in a special case (and usually hide a bug — return the error instead).
+- **Names earn their qualifiers.** A qualifier (prefix or suffix like `Get`, `WithX`, `ByY`, `FromZ`) earns its place only when it differentiates from a real sibling that exists. `Owner()` not `GetOwner()` because there's no `Owner` without getting it. `CreateRun()` not `CreateRunWithUpload()` when there's no `CreateRun` without an upload. `NewBuffer` and `NewBufferString` both keep their qualifiers because they coexist as differentiated peers. Drop a qualifier the moment its sibling stops existing.
 
 ### Naming Quick Reference
 | Item | Convention | Example |
