@@ -10,8 +10,7 @@ return {
   {
     "neanias/everforest-nvim",
     version = false,
-    lazy = false,
-    priority = 1000,
+    lazy = true,
     config = function()
       require("everforest").setup({
         background = "hard",
@@ -19,6 +18,15 @@ return {
         italics = false,
         disable_italic_comments = false,
       })
+    end,
+  },
+  {
+    "ribru17/bamboo.nvim",
+    lazy = false,
+    priority = 1000,
+    config = function()
+      require("bamboo").setup({})
+      require("bamboo").load()
     end,
   },
 }
