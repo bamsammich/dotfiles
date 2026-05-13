@@ -27,7 +27,6 @@ global:
       - "font-caskaydia-mono-nerd-font"
       - "font-hurmit-nerd-font"
       - "obsidian"
-      - "powershell"
       - "ghostty"
       - "zed@preview"
       - "zen"
