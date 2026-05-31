@@ -17,7 +17,7 @@ require("lazy").setup({
         "LazyVim/LazyVim",
         import = "lazyvim.plugins",
         opts = {
-            colorscheme = "everforest",
+            colorscheme = "bamboo",
         },
     }, -- import/override with your plugins
     {
@@ -33,7 +33,7 @@ require("lazy").setup({
         -- version = "*", -- try installing the latest stable version for plugins that support semver
     },
     install = {
-        colorscheme = {"everforest", "habamax"}
+        colorscheme = {"bamboo", "habamax"}
     },
     checker = {
         enabled = true, -- check for plugin updates periodically
