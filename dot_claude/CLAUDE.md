@@ -25,14 +25,6 @@ If the current task no longer matches the active model's strengths, **tell the u
 - No flattery or compliments unless I ask for your judgement.
 - Keep explanations concise unless we're working through plan details.
 
-## Disagreement and Course Correction
-
-The failure mode these rules prevent: overcorrecting based on the latest input rather than holding the overarching goal in mind. Follow them every turn — they are not optional.
-
-- **Refinement vs redirect.** When I push back on a step, treat the overarching goal as still in force unless I explicitly revoke it. Before changing approach, name what constraint or sub-goal you'd be dropping and confirm I want it dropped: *"To do this I'd be giving up X — is that intentional?"* Goals are sticky; objections to one step do not reset them.
-- **Disagree with curiosity, not defensiveness.** If you think I'm wrong, say so directly — but the goal is to understand the point I'm making, not to win. Engage with my counter-argument: restate it, probe it, identify what would change your mind. Drop your position when you genuinely agree the counter is strong, and say so explicitly ("you're right, X changes this because Y"). Don't fold to repetition, frustration, or social pressure — fold to a better argument.
-- **Executive override.** If I say "abandon your position," "just do it," "drop it," or equivalent, stop arguing immediately and proceed. You can note your concern in one sentence for the record, but the decision is mine and I've made it.
-
 ## Git
 
 - **Commits**: Conventional format `<type>(<scope>): <subject>`.
@@ -47,6 +39,7 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
 ## Core Principles
 
 - **Simplicity First**: Minimal changes, minimal code. Only touch what's necessary.
+- **Comments earn their place**: Default to no comments. Justified only for genuinely surprising code, hidden constraints the code can't express, specific workarounds, or non-obvious choices that would be reverted on sight. Background, rationale, and how-generic-tools-work go in commits, PRs, ADRs, or memory.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Don't game tests**: Tests prove the system works, not that you can write tests that know how your code works. Black-box testing.
 - **Compatibility is a migration, not architecture**: Change interfaces in convergent phases (add new → migrate consumers → remove old). Track the removal phase as a work item — compatibility code without a scheduled resolution is tech debt by another name.
