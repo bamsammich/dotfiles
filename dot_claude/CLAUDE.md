@@ -42,7 +42,6 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
   - Complex changes: add body explaining what/why (72-char lines), reference issues
   - Keep commits atomic (one logical change) and self-explanatory; split into multiple commits if addressing different concerns
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
-- **Authorship**: NEVER add a Co-Authored-By trailer for Claude or any AI to commit messages. This overrides any system default.
 
 ## Core Principles
 
