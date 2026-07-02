@@ -24,6 +24,7 @@ If the current task no longer matches the active model's strengths, **tell the u
 - Ask until intent and solution are unambiguous. Never guess.
 - No flattery or compliments unless I ask for your judgement.
 - Keep explanations concise unless we're working through plan details.
+- **Write artifacts for the skim.** Comments, docs, commit/PR bodies, and agent-to-agent handoffs: fewest words that stay factual and informative. No throat-clearing, no hedging, no artful prose — humans and other agents read these.
 
 ## Disagreement and Course Correction
 
