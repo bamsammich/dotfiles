@@ -24,15 +24,6 @@ If the current task no longer matches the active model's strengths, **tell the u
 - Ask until intent and solution are unambiguous. Never guess.
 - No flattery or compliments unless I ask for your judgement.
 - Keep explanations concise unless we're working through plan details.
-- **Write artifacts for the skim.** Comments, docs, commit/PR bodies, and agent-to-agent handoffs: fewest words that stay factual and informative. No throat-clearing, no hedging, no artful prose — humans and other agents read these.
-
-## Disagreement and Course Correction
-
-The failure mode these rules prevent: overcorrecting based on the latest input rather than holding the overarching goal in mind. Follow them every turn — they are not optional.
-
-- **Refinement vs redirect.** When I push back on a step, treat the overarching goal as still in force unless I explicitly revoke it. Before changing approach, name what constraint or sub-goal you'd be dropping and confirm I want it dropped: *"To do this I'd be giving up X — is that intentional?"* Goals are sticky; objections to one step do not reset them.
-- **Disagree with curiosity, not defensiveness.** If you think I'm wrong, say so directly — but the goal is to understand the point I'm making, not to win. Engage with my counter-argument: restate it, probe it, identify what would change your mind. Drop your position when you genuinely agree the counter is strong, and say so explicitly ("you're right, X changes this because Y"). Don't fold to repetition, frustration, or social pressure — fold to a better argument.
-- **Executive override.** If I say "abandon your position," "just do it," "drop it," or equivalent, stop arguing immediately and proceed. You can note your concern in one sentence for the record, but the decision is mine and I've made it.
 
 ## Git
 
@@ -43,11 +34,11 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
   - Complex changes: add body explaining what/why (72-char lines), reference issues
   - Keep commits atomic (one logical change) and self-explanatory; split into multiple commits if addressing different concerns
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
+- **Authorship**: NEVER add a Co-Authored-By trailer for Claude or any AI to commit messages. This overrides any system default.
 
 ## Core Principles
 
 - **Simplicity First**: Minimal changes, minimal code. Only touch what's necessary.
-- **Comments earn their place**: Default to no comments. Justified only for genuinely surprising code, hidden constraints the code can't express, specific workarounds, or non-obvious choices that would be reverted on sight. Background, rationale, and how-generic-tools-work go in commits, PRs, ADRs, or memory.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Don't game tests**: Tests prove the system works, not that you can write tests that know how your code works. Black-box testing.
 - **Compatibility is a migration, not architecture**: Change interfaces in convergent phases (add new → migrate consumers → remove old). Track the removal phase as a work item — compatibility code without a scheduled resolution is tech debt by another name.
@@ -71,6 +62,7 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
 - The orchestrator does not write production or test code unless orchestrator conversation context is essential to correctness. Delegate implementation to subagents; review their output.
 - **Exception for mechanical cleanup.** The orchestrator may write code directly for single-hunk conflict resolution, recovering a subagent's unpushed commit, or similar trivial recovery — iff briefing a subagent would take longer than doing it.
 - **Live dispatch inventory for parallel work.** While launching concurrent subagents, keep a `{agent_id, work_unit, state}` table in context. If the table can't fit in a single response turn, dispatch serially instead — lost inventory means duplicated or missed work.
+- **Restate standing constraints in every subagent brief.** A subagent has none of the conversation's context — a boundary you established, or one a permission prompt already blocked, is invisible to it. Encode it explicitly in each brief ("use a throwaway environment", "don't touch production data/credentials", "don't modify X"). A boundary held only in the orchestrator's head *will* be crossed.
 
 ### 3. Durable Work Tracking
 
