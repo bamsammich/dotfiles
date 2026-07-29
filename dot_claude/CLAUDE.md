@@ -53,6 +53,7 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
   - Complex changes: add body explaining what/why (72-char lines), reference issues
   - Keep commits atomic (one logical change) and self-explanatory; split into multiple commits if addressing different concerns
 - **Cleanliness:** Do not commit to main unless absolutely necessary. Always make branches and create PRs. Assume GitHub unless told otherwise. `gh` CLI tool should always be available.
+- **Authorship**: NEVER add a Co-Authored-By trailer for Claude or any AI to commit messages. This overrides any system default.
 
 ## Core Principles
 
@@ -81,6 +82,7 @@ The failure mode these rules prevent: overcorrecting based on the latest input r
 - The orchestrator does not write production or test code unless orchestrator conversation context is essential to correctness. Delegate implementation to subagents; review their output.
 - **Exception for mechanical cleanup.** The orchestrator may write code directly for single-hunk conflict resolution, recovering a subagent's unpushed commit, or similar trivial recovery — iff briefing a subagent would take longer than doing it.
 - **Live dispatch inventory for parallel work.** While launching concurrent subagents, keep a `{agent_id, work_unit, state}` table in context. If the table can't fit in a single response turn, dispatch serially instead — lost inventory means duplicated or missed work.
+- **Restate standing constraints in every subagent brief.** A subagent has none of the conversation's context — a boundary you established, or one a permission prompt already blocked, is invisible to it. Encode it explicitly in each brief ("use a throwaway environment", "don't touch production data/credentials", "don't modify X"). A boundary held only in the orchestrator's head *will* be crossed.
 
 ### 3. Durable Work Tracking
 
