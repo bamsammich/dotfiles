@@ -1,12 +1,12 @@
 # ------- TAPS -------
 # source: {{ .chezmoi.sourceDir }}/.chezmoidata.yaml
 {{- range (.global.homebrew.taps | uniq | sortAlpha) }}
-tap {{ . | quote }}
+tap {{ . | quote }}, trusted: true
 {{- end }}
 {{ if .homebrew.taps }}
 # source: {{ .chezmoi.configFile }}
 {{- range (.homebrew.taps | uniq | sortAlpha) }}
-tap {{ . | quote }}
+tap {{ . | quote }}, trusted: true
 {{- end }}
 {{- end }}
 
