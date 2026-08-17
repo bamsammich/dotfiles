@@ -28,8 +28,18 @@
     ]
   },
   "enabledPlugins": {
-    "claude-mem@thedotmack": true
+    "claude-mem@thedotmack": true,
+    "i-have-adhd@i-have-adhd": true
   },
+  "extraKnownMarketplaces": {
+    "i-have-adhd": {
+      "source": {
+        "source": "github",
+        "repo": "ayghri/i-have-adhd"
+      }
+    }
+  },
+  "agentPushNotifEnabled": true,
   "autoMode": {
     "environment": [
       "### Org-wide",
@@ -57,6 +67,5 @@
       "**Org-specific CLIs**: None configured",
       "routine under /Users/travishuddleston/ghq/github.com/bamsammich/lumen/ prefix: build, type-check, and test commands (npm install, node build.mjs, npx tsc --noEmit, npx tsx test/*.test.ts) as documented in this repo's CLAUDE.md/README"
     ]
-  },
-  "agentPushNotifEnabled": true
+  }
 }
