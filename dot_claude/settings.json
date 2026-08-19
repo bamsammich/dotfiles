@@ -22,6 +22,25 @@
           {
             "type": "command",
             "command": "rtk hook claude"
+          },
+          {
+            "type": "command",
+            "command": "/Users/travishuddleston/.claude/hooks/diffx-gate.sh",
+            "timeout": 10,
+            "statusMessage": "Checking diffx review gate..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/travishuddleston/.claude/hooks/stop-slop-always.sh",
+            "timeout": 5,
+            "statusMessage": "Checking stop-slop always-on flag..."
           }
         ]
       }
@@ -36,12 +55,6 @@
       "source": {
         "source": "github",
         "repo": "ayghri/i-have-adhd"
-      }
-    },
-    "thedotmack": {
-      "source": {
-        "source": "github",
-        "repo": "thedotmack/claude-mem"
       }
     }
   },
