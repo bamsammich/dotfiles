@@ -37,6 +37,12 @@
         "source": "github",
         "repo": "ayghri/i-have-adhd"
       }
+    },
+    "thedotmack": {
+      "source": {
+        "source": "github",
+        "repo": "thedotmack/claude-mem"
+      }
     }
   },
   "agentPushNotifEnabled": true,
