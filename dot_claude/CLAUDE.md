@@ -20,3 +20,35 @@ The `docsearch` MCP server is a local full-text corpus of documentation I have i
 If the docsearch tools are not present, skip all of this.
 
 @RTK.md
+
+## Edit files with Edit and Write
+
+Change files with the Edit and Write tools. This overrides auto mode, which
+prefers Bash for anything Bash can do.
+
+Use Bash to read and search (`cat`, `grep`, `rg`, `find`) and to run things
+(builds, tests, `git`, `chezmoi`). Do not use it for `sed -i`, `perl -pi`, `tee`
+into a file, heredoc redirects over a file, or a script written to rewrite a
+file.
+
+Edit and Write render as diff cards I can review. They also error out when the
+target text does not match. Bash writes whatever you told it to and reports
+success.
+
+## diffx review before commit
+
+No code gets committed until a diffx review comes back with zero open comments.
+A `PreToolUse` hook (`~/.claude/hooks/diffx-gate.sh`) enforces this by denying
+`git commit` until the current diff has been approved.
+
+When work is ready to commit:
+
+1. Run `/diffx-start-review` (launches `diffx -p 7777` in the background).
+2. Wait for the user to review in the browser and say they are done.
+3. Run `/diffx-finish-review` — apply the comments, then run
+   `~/.claude/hooks/diffx-approve.sh`, which approves only if no comment is open.
+4. Commit.
+
+Editing files after approval re-arms the gate; review again. Do not write the
+approval file directly, and do not use the `DIFFX_SKIP=1` override unless the
+user explicitly asks for it.
