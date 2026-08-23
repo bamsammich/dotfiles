@@ -35,20 +35,26 @@ Edit and Write render as diff cards I can review. They also error out when the
 target text does not match. Bash writes whatever you told it to and reports
 success.
 
-## diffx review before commit
+## reviewd review before commit
 
-No code gets committed until a diffx review comes back with zero open comments.
-A `PreToolUse` hook (`~/.claude/hooks/diffx-gate.sh`) enforces this by denying
-`git commit` until the current diff has been approved.
+No code gets committed until I have approved it. A `PreToolUse` hook
+(`~/.claude/hooks/reviewd-gate.sh`) enforces this by denying `git commit` until
+reviewd holds an approval for the exact bytes in the working tree.
 
-When work is ready to commit:
+Use the `reviewd` skill. In short:
 
-1. Run `/diffx-start-review` (launches `diffx -p 7777` in the background).
-2. Wait for the user to review in the browser and say they are done.
-3. Run `/diffx-finish-review` — apply the comments, then run
-   `~/.claude/hooks/diffx-approve.sh`, which approves only if no comment is open.
-4. Commit.
+1. `review_create` with every directory the change touches, and give me the URL
+   it returns.
+2. `reviewctl wait --review <id>` as a **background** command, so the session
+   resumes when I submit. The exit code is the verdict: 0 approved, 2 changes
+   requested, 3 released, 124 timeout.
+3. On changes requested, read `threads_list({ turn: "agent" })`, fix, reply,
+   and `review_snapshot` before waiting again.
+4. Commit, then `review_release`.
 
-Editing files after approval re-arms the gate; review again. Do not write the
-approval file directly, and do not use the `DIFFX_SKIP=1` override unless the
-user explicitly asks for it.
+Approval is mine alone and covers exactly the bytes I approved. Editing after
+approval re-arms the gate. Comments I have not submitted are invisible to you
+on purpose, so do not act on something you have not been sent.
+
+Never write an approval by hand, and do not suggest `REVIEWD_SKIP=1` unless I
+ask for it.
