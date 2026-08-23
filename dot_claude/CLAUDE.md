@@ -46,8 +46,9 @@ Use the `reviewd` skill. In short:
 1. `review_create` with every directory the change touches, and give me the URL
    it returns.
 2. `reviewd wait --review <id>` as a **background** command, so the session
-   resumes when I submit. The exit code is the verdict: 0 approved, 2 changes
-   requested, 3 released, 124 timeout.
+   resumes when I submit. The verdict is the first line of output: `approved`,
+   `changes_requested`, `comment`, `released`, or `timeout`. The exit code only
+   says whether the wait worked.
 3. On changes requested, read `threads_list({ turn: "agent" })`, fix, reply,
    and `review_snapshot` before waiting again.
 4. Commit, then `review_release`.
