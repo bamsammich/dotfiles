@@ -22,12 +22,6 @@
           {
             "type": "command",
             "command": "rtk hook claude"
-          },
-          {
-            "type": "command",
-            "command": "/Users/travishuddleston/.claude/hooks/diffx-gate.sh",
-            "timeout": 10,
-            "statusMessage": "Checking diffx review gate..."
           }
         ]
       }

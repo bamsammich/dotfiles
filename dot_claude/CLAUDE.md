@@ -37,9 +37,14 @@ success.
 
 ## reviewd review before commit
 
-No code gets committed until I have approved it. A `PreToolUse` hook
-(`~/.claude/hooks/reviewd-gate.sh`) enforces this by denying `git commit` until
-reviewd holds an approval for the exact bytes in the working tree.
+No code gets committed until I have approved it. A `PreToolUse` hook denies
+`git commit` until reviewd holds an approval for the exact bytes in the working
+tree.
+
+The hook, the MCP server and the skill all come from the `reviewd` plugin, which
+lives in the reviewd repository and is installed from it. Nothing about reviewd
+is configured here any more, so there is one copy of the gate rather than two
+that can drift.
 
 Use the `reviewd` skill. In short:
 

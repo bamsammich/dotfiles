@@ -33,9 +33,3 @@ key.txt.age
 !install-packages.sh
 !bootstrap-yay.sh
 {{ end }}
-
-{{/* ===== Tests live beside what they test, but not in $HOME =====
-
-     Last match wins, so this sits after the omarchy allowlist above rather
-     than being re-included by its !.claude/** line. */}}
-.claude/hooks/reviewd-gate.test.sh
