@@ -1,0 +1,83 @@
+{{/*
+  Claude Code writes to this file too, so chezmoi cannot be its sole author.
+
+  Installing a plugin adds an `enabledPlugins` entry and a marketplace
+  registration; auto mode writes its environment survey into `autoMode`. All
+  three are machine-specific — the reviewd marketplace here is an absolute path
+  to a local checkout, and the auto mode survey names a repository that exists
+  on this machine only. A source of truth in git cannot hold any of them.
+
+  So chezmoi owns the parts worth syncing (permissions, hooks) and reads the
+  rest back off the machine it is applying to. Applying reproduces whatever
+  Claude Code last wrote, which makes `chezmoi apply --force` safe: it can no
+  longer uninstall a plugin or unregister a marketplace behind your back.
+
+  The failure this prevents is a security control that stops working silently.
+  The chezmoi source pointed `PreToolUse` at a hook deleted in c31add1, and
+  only survived because every apply happened to name individual files.
+
+  Fresh machine, no deployed file: the volatile keys come out empty, which is
+  correct — no plugins are installed there yet.
+
+  The keys are read back through jq rather than fromJson/toPrettyJson because
+  Go's map iteration sorts, and Claude Code writes in insertion order. Sorting
+  them would leave `chezmoi diff` permanently showing a reordering that means
+  nothing. A diff you learn to ignore is how the deleted-hook drift survived,
+  so this reproduces the live bytes and applying is a genuine no-op.
+*/ -}}
+{{- $enabledPlugins := "{}" -}}
+{{- $marketplaces := "{}" -}}
+{{- $autoMode := "" -}}
+{{- $deployed := joinPath .chezmoi.homeDir ".claude/settings.json" -}}
+{{- if stat $deployed -}}
+{{-   $enabledPlugins = output "jq" ".enabledPlugins // {}" $deployed -}}
+{{-   $marketplaces = output "jq" ".extraKnownMarketplaces // {}" $deployed -}}
+{{-   $autoMode = output "jq" ".autoMode // empty" $deployed -}}
+{{- end -}}
+{
+  "permissions": {
+    "allow": [
+      "mcp__codegraph__*"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codegraph prompt-hook"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rtk hook claude"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/stop-slop-always.sh",
+            "timeout": 5,
+            "statusMessage": "Checking stop-slop always-on flag..."
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {{ $enabledPlugins | indent 2 | trim }},
+  "extraKnownMarketplaces": {{ $marketplaces | indent 2 | trim }},
+  "agentPushNotifEnabled": true{{ if $autoMode }},
+  "autoMode": {{ $autoMode | indent 2 | trim }}{{ end }}
+}
