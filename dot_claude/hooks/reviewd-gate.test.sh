@@ -10,6 +10,8 @@
 
 set -u
 
+# Named for the chezmoi source file, which carries the executable_ prefix here.
+# The plugin copy in the reviewd repo drops it; the two are otherwise identical.
 HOOK=$(cd "$(dirname "$0")" && pwd)/executable_reviewd-gate.sh
 [ -x "$HOOK" ] || { echo "no hook at $HOOK"; exit 1; }
 
@@ -19,16 +21,29 @@ trap 'rm -rf "$work"' EXIT
 pass=0
 fail=0
 
-# A reviewctl the tests control, so nothing here talks to a real daemon. It
+# A reviewd the tests control, so nothing here talks to a real daemon. It
 # answers deny, which makes "was the gate reached at all" the thing under test.
-cat >"$work/reviewctl" <<'STUB'
+cat >"$work/reviewd" <<'STUB'
 #!/bin/bash
 case $1 in
-  fingerprint) echo "fingerprint-of-$2" ;;
+  fingerprint)
+    # Empty hash for a clean tree, matching the real one on the property the
+    # hook depends on: nothing to review means nothing to gate.
+    if [ -z "$(git -C "$2" status --porcelain 2>/dev/null)" ]; then
+      printf '' | shasum -a 256 | cut -d' ' -f1
+    else
+      echo "fingerprint-of-$2"
+    fi
+    ;;
   gate) echo '{"decision":"deny","reason":"stubbed","reviewUrl":"http://example/r/1"}' ;;
 esac
 STUB
-chmod +x "$work/reviewctl"
+chmod +x "$work/reviewd"
+
+# Exported, not prefixed onto the jq that builds the payload. A prefix there
+# reaches jq and not the hook on the other side of the pipe, which is how this
+# suite spent its first day quietly testing against the real daemon.
+export REVIEWD_BIN="$work/reviewd"
 
 repo() {
   local path=$work/$1
@@ -48,9 +63,7 @@ repo() {
 # Runs the hook and prints "deny" or "allow".
 verdict() {
   local command=$1 cwd=$2 out
-  out=$(REVIEWD_CTL="$work/reviewctl" \
-    jq -nc --arg c "$command" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' |
-    "$HOOK")
+  out=$(jq -nc --arg c "$command" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' | "$HOOK")
 
   if printf '%s' "$out" | grep -q '"deny"'; then printf 'deny'; else printf 'allow'; fi
 }
