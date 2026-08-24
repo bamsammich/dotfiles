@@ -47,6 +47,11 @@
           {
             "type": "command",
             "command": "codegraph prompt-hook"
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/prose-rules.sh",
+            "timeout": 5
           }
         ]
       }
