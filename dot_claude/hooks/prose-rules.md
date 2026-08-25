@@ -10,3 +10,6 @@ Review comment 3 sentences. Commit body 5 lines.
 Cut every sentence that explains, justifies, or transitions.
 No "worth noting", "the key thing", "that said". Needs a flag?
 One-word label: Caveat / Guessed / Risk / Unverified. Else just state it.
+Name the thing, never point at it. No bare this / that / it / these / those,
+no above / below / earlier / former / latter / "as mentioned". Every reader
+lands cold with no antecedent, and text moves after I write it.
