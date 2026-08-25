@@ -1,5 +1,12 @@
-PROSE RULES (stop-slop + adhd, active. Full text in the SessionStart injection.)
-Scope: everything I write. Replies, docs, commit messages, PR bodies, code and config comments, artifacts, emails, UI copy.
-Shortest complete version. Delete any sentence that does not change what the reader does or knows.
-Active voice. No em dashes. No adverbs, no hedges, no filler, no preamble, no closer, no recap.
-Specific paths and numbers, never "significant" or "some work".
+PROSE RULES — scannable beats well-written. Applies to everything I write:
+replies, docs, commit messages, PR bodies, code and config comments,
+artifacts, emails, UI copy.
+Keep stop-slop's deletions: no filler, hedges, adverbs, preamble, recap,
+closer, em dashes, passive voice, "not X but Y". Specific numbers and paths.
+Drop its craft rules. Rhythm, reader-in-room, paragraph endings add words.
+Facts go in lists. Prose only when reasoning actually connects.
+Caps: reply 100 words. Task notes 200. Code comment 2 lines.
+Review comment 3 sentences. Commit body 5 lines.
+Cut every sentence that explains, justifies, or transitions.
+No "worth noting", "the key thing", "that said". Needs a flag?
+One-word label: Caveat / Guessed / Risk / Unverified. Else just state it.
