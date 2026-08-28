@@ -67,15 +67,15 @@
         ]
       }
     ],
-    "SessionStart": [
+    "PostToolUse": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/stop-slop-always.sh",
-            "timeout": 5,
-            "statusMessage": "Checking stop-slop always-on flag..."
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/proselint-advise.sh",
+            "timeout": 10,
+            "statusMessage": "Checking prose..."
           }
         ]
       }
