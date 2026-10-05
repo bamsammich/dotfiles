@@ -41,6 +41,18 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/claude-mem-ensure-deps.sh",
+            "timeout": 120,
+            "statusMessage": "Checking claude-mem deps..."
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

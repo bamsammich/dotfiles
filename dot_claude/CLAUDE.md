@@ -64,3 +64,16 @@ on purpose, so do not act on something you have not been sent.
 
 Never write an approval by hand, and do not suggest `REVIEWD_SKIP=1` unless I
 ask for it.
+
+## Search before building
+
+Look for an existing tool before writing a new one. Apps, libraries, scripts
+and infrastructure all count. Search the web, package registries and
+self-hosted project catalogs, then report what turned up and whether it fits.
+
+Write new code only when nothing exists, or when a candidate fails a
+requirement I have stated out loud. Name the gap that justified building.
+
+The failure mode is a weekend spent rebuilding something that shipped years
+ago. A five-minute search costs less than the maintenance I inherit from
+anything you write.
