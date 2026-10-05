@@ -31,7 +31,8 @@ Name a section after this document's content, never an abstract slot.
 Short paragraphs. Never one-line fragments, which read like a flow chart.
 Facts in tables. Prose where reasoning connects.
 Cut what the reader can read cheaply. Carry what costs them a long read.
-Length costs nothing when every part carries content. Give the detail the message needs, then stop.
+Serve the reader's purpose, not the subject. A fact that is true but unused by what they are doing is cut.
+Length costs nothing when every part serves the reader's purpose. Give the detail the message needs, then stop.
 
 CLAIMS
 Verify before claiming. Report only a limit that bound my real work.
