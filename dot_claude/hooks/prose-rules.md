@@ -1,6 +1,8 @@
 PROSE RULES. Goal: understood on one read. Engaging second. Everything below serves those two.
 Scope: replies, docs, commit messages, PR bodies, code and config comments, email, UI copy.
 Check a draft: python3 ~/.claude/hooks/proselint.py FILE
+Then read each sentence once, cold, as the reader will. A sentence that needs a second pass gets rewritten, whatever the linter says.
+No rule outranks the goal. A fix that clears one rule but costs a reread is wrong.
 
 NEVER (no human in the 65-excerpt corpus does these)
 Repeat a determiner across list items. "the X, the Y, and Z" reads as generated. Drop the articles or use a table.
@@ -12,6 +14,10 @@ Split an auxiliary from its verb with an interruption.
 Use an em dash, a throat-clearing opener, or performed affect.
 
 SENTENCES
+One parse on the first read. If a word can attach two ways, the reader takes the wrong one.
+Join clauses with a conjunction or a period, never a bare comma.
+A noun after a comma that follows a noun reads as renaming it. Use that shape only when it does.
+Keep "that" wherever dropping it lets the next noun read as an object.
 Keep the verb close to its subject.
 Put the news at the end of a sentence. Start it with something already established.
 No content word three times, and none twice inside six words.
@@ -27,6 +33,7 @@ Describe what a person did, never who they are.
 
 SHAPE
 Open with the failure or the decision, never with architecture.
+Ground the reader before the news, in a passage as in a sentence. Open with what they already know, then what differs, so they never read ahead to learn which state a sentence describes.
 Name a section after this document's content, never an abstract slot.
 Short paragraphs. Never one-line fragments, which read like a flow chart.
 Facts in tables. Prose where reasoning connects.
