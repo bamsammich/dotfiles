@@ -785,8 +785,9 @@ export default class CrewBoard extends View {
   // One line per decision; a click opens it in place with its reasoning,
   // choices, thread and a comment box. One row is open at a time.
   decisionRow(d, g, p, t) {
-    const SHORT = { plan: "Plan", ratified: "Ratified", escalation: "For you", design: "Design" };
+    const SHORT = { plan: "Plan", ratified: "Kept", escalation: d.auto && !d.overridden ? "For you" : "Asked", design: "Design" };
     const open = this.open === d.id;
+    const question = d.question || d.what;
     const forYou = d.auto && !d.overridden;
     const nComments = (d.comments ?? []).length;
     const head = h_flex().id(`dr-${d.id}`).px(8).py(6).gap(8).items_start().rounded(6).cursor_pointer()
@@ -795,8 +796,8 @@ export default class CrewBoard extends View {
       .child(div().mt(5).w(6).h(6).rounded(3).flex_none().bg(forYou ? t.accent : t.chrome))
       .child(div().w(50).flex_none().text_size(10).mt(1).text_color(forYou ? t.accent : t.dim).child(SHORT[d.source] ?? d.source))
       .child(open
-        ? div().flex_1().min_w(0).font_semibold().child(d.what)
-        : div().flex_1().min_w(0).truncate().text_color(t.foreground).child(d.what))
+        ? div().flex_1().min_w(0).font_semibold().child(question)
+        : div().flex_1().min_w(0).truncate().text_color(t.foreground).child(question))
       .when(nComments > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`${nComments} 💬`)))
       .child(div().flex_none().text_color(t.dim).child(open ? "▾" : "▸"));
     if (!open) return head;
@@ -810,35 +811,53 @@ export default class CrewBoard extends View {
     const st = this.composer;
     const send = (cx) => this.commentOn(d, g, p, cx);
     st.onSubmit = send;
-    return v_flex().pl(72).pr(10).pb(10).gap(8)
+    const SOURCE_LONG = {
+      plan: "Claude's call while planning or reviewing",
+      ratified: "Claude kept a choice the builder made where the spec was silent",
+      escalation: d.auto ? (changed ? "Claude decided for you; you changed it" : "Claude decided for you so the run could continue") : "You decided",
+      design: "From the design",
+    };
+    const label = (s) => div().w(64).flex_none().text_size(11).text_color(t.dim).child(s);
+    return v_flex().pl(22).pr(10).pb(10).gap(8)
       .child(h_flex().gap(8).text_size(11).text_color(t.dim)
+        .child(div().child(SOURCE_LONG[d.source] ?? d.source))
+        .child(div().child("·"))
         .child(div().child(d.id))
-        .child(div().child(d.ts ? `${ago(d.ts)} ago` : ""))
-        .when(Boolean(forYouLabel(d)), (el) => el.child(div().text_color(t.accent).child(forYouLabel(d)))))
-      .when(Boolean(d.why), (el) => el.child(div().text_color(t.muted).child(d.why)))
-      .when(changed, (el) => el.child(div().text_color(t.muted).child(`Claude chose "${d.choice}"; you changed it to "${d.overridden}".`)))
-      .when(d.auto && !changed && !g.finished && (d.options ?? []).length > 1, (el) => el.child(h_flex().gap(6).flex_wrap()
+        .child(div().child(d.ts ? `${ago(d.ts)} ago` : "")))
+      .child(h_flex().gap(8).items_start()
+        .child(label("Decision"))
+        .child(div().flex_1().min_w(0).px(8).py(5).rounded(6).bg(t.surface).border_l(3).border_color(d.auto && !changed ? t.accent : t.done)
+          .font_semibold().child(changed ? d.overridden : (d.decision || d.what))))
+      .when(Boolean(d.why), (el) => el.child(h_flex().gap(8).items_start()
+        .child(label("Why"))
+        .child(div().flex_1().min_w(0).text_color(t.muted).child(d.why))))
+      .when(changed, (el) => el.child(h_flex().gap(8).items_start()
+        .child(label("Was"))
+        .child(div().flex_1().min_w(0).text_color(t.muted).child(`Claude had chosen "${d.choice}".`))))
+      .when(d.auto && !changed && !g.finished && (d.options ?? []).length > 1, (el) => el.child(h_flex().gap(6).flex_wrap().pl(72)
         .children(d.options.filter((o) => o.label !== d.choice).map((o, j) =>
           div().id(`chg-${d.id}-${j}`).px(10).py(5).rounded(7).border(1).border_color(t.border).bg(t.surface).cursor_pointer()
             .hover((s) => s.bg(t.hover)).text_size(12)
             .on_click((_e, cx) => this.changeDecision(d, g, p, o, cx))
             .child(`Change to: ${o.label}`)))))
-      .when((!d.auto || g.finished) && (d.options ?? []).length > 0, (el) => el.child(div().text_color(t.dim).text_size(12)
-        .child(`${d.auto ? "Other options" : "Alternatives weighed"}: ${d.options.filter((o) => o.label !== d.choice).map((o) => o.label).join("; ")}`)))
+      .when((!d.auto || g.finished) && (d.options ?? []).filter((o) => o.label !== d.choice).length > 0, (el) => el.child(h_flex().gap(8).items_start()
+        .child(label("Not chosen"))
+        .child(v_flex().flex_1().min_w(0).gap(2).children(d.options.filter((o) => o.label !== d.choice).map((o) =>
+          div().text_color(t.dim).text_size(12).child(o.detail ? `${o.label}: ${o.detail}` : o.label))))))
       .when(Boolean(g.finished) && d.auto && !changed, (el) => el.child(div().text_color(t.dim).text_size(11)
         .child("This child is finished. To change the decision, comment and Claude will reopen the work.")))
-      .when((d.comments ?? []).length > 0, (el) => el.child(v_flex().gap(6).pl(10).border_l(2).border_color(t.border)
+      .when((d.comments ?? []).length > 0, (el) => el.child(v_flex().gap(6).ml(72).pl(10).border_l(2).border_color(t.border)
         .children(d.comments.map((c) => v_flex().gap(1)
           .child(h_flex().gap(6).text_size(11)
             .child(div().font_semibold().text_color(c.by === "user" ? t.foreground : t.accent).child(c.by === "user" ? "You" : "Claude"))
             .child(div().text_color(t.dim).child(`${ago(c.ts)} ago`)))
           .child(div().text_size(12).child(c.text))))))
-      .child(h_flex().gap(6).items_center()
+      .child(h_flex().gap(6).items_center().pl(72)
         .child(Input.new(st.input).flex_1().min_w(0).h(30).px(8).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(12))
         .child(h_flex().id(`cmt-send-${d.id}`).h(30).px(10).items_center().rounded(7)
           .bg(st.text.trim() ? t.solid : t.surface).text_color(st.text.trim() ? t.solid_foreground : t.dim)
           .text_size(12).cursor_pointer().on_click((_e, cx) => send(cx)).child("Send")))
-      .child(div().text_size(11).text_color(t.dim).child(p.orchestrator
+      .child(div().pl(72).text_size(11).text_color(t.dim).child(p.orchestrator
         ? "Claude gets your comment, acts on it if needed, and replies here."
         : "Saved with the decision; Claude reads it from crew's files."));
   }

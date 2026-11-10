@@ -15,8 +15,10 @@
 #                                                         a decision with choices; --auto takes the recommendation now
 #                                                         and leaves it on the board for the user to change later
 #   crew answer ISSUE LABEL [--note TEXT]                 record the user's choice (the board calls this)
-#   crew decision ISSUE|--parent KEY --what TEXT [--why TEXT] [--source plan|ratified|escalation|design]
-#                 [--option "LABEL: DETAIL"]...           log a decision so the board can show it; prints its id
+#   crew decision ISSUE|--parent KEY --question Q --decision D [--why TEXT]
+#                 [--source plan|ratified|escalation|design] [--option "LABEL: DETAIL"]...
+#                                                         log a decision so the board can show it; prints its id
+#   crew reword ID [--question Q] [--decision D] [--why TEXT]   fix a logged decision's wording
 #   crew comment  ID --text TEXT [--by user|claude]       add to a decision's comment thread
 #   crew review ISSUE LENS pass|fix-required [FINDINGS] [--file REPORT.md]
 #                                                         record one Opus reviewer's verdict and report
@@ -637,7 +639,8 @@ cmd_ask() {
     meta_set "$wt" ".answer = {choice: $(jq -n --arg c "$pick" '$c'), by: \"claude\", ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"} | .decided = ((.decided // []) + [{question: .ask.question, options: .ask.options, choice: $(jq -n --arg c "$pick" '$c'), ts: .answer.ts}])"
     history_add "$wt" decided "$(jq -cn --arg q "$q" --arg c "$pick" '{question:$q, choice:$c, by:"claude"}')"
     add_decision "$wt/.crew/meta.json" "$issue" "$(jq -cn --arg q "$q" --arg c "$pick" --argjson o "$oj" \
-      '{what: "\($q) Chose: \($c).", question: $q, choice: $c, options: $o, source: "escalation", auto: true}')" >/dev/null
+      '{question: $q, decision: ($o | map(select(.label == $c)) | .[0] | if .detail != "" then "\(.label): \(.detail)" else .label end),
+        what: $c, choice: $c, options: $o, source: "escalation", auto: true}')" >/dev/null
     say "decided $issue for the user: $pick (they can change it on the board)"
     return 0
   fi
@@ -693,22 +696,36 @@ add_decision() { # add_decision FILE KEY JSON: append, print the new id
 }
 
 cmd_decision() {
-  local key="" what="" why="" source="plan" opts=() file oj entry id
+  local key="" what="" question="" why="" source="plan" opts=() file oj entry id
   while [ $# -gt 0 ]; do case "$1" in
-    --parent) key="$(upper "$2")"; shift 2 ;; --what) what="$2"; shift 2 ;; --why) why="$2"; shift 2 ;;
+    --parent) key="$(upper "$2")"; shift 2 ;; --what|--decision) what="$2"; shift 2 ;; --why) why="$2"; shift 2 ;;
+    --question) question="$2"; shift 2 ;;
     --source) source="$2"; shift 2 ;; --option) opts+=("$2"); shift 2 ;;
     -*) die "unknown arg $1" ;; *) key="$(upper "$1")"; shift ;; esac; done
-  [ -n "$key" ] && [ -n "$what" ] || die "usage: crew decision ISSUE|--parent KEY --what TEXT"
+  [ -n "$key" ] && [ -n "$what" ] && [ -n "$question" ] || die "usage: crew decision ISSUE|--parent KEY --question Q --decision D"
   file="$(decision_file "$key")"
   oj='[]'
   if [ "${#opts[@]}" -gt 0 ]; then
     oj="$(printf '%s\n' "${opts[@]}" | jq -R 'capture("^(?<label>[^:]+)(:\\s*(?<detail>.*))?$") | {label: (.label|gsub("^\\s+|\\s+$";"")), detail: (.detail // "")}' | jq -s .)"
   fi
-  entry="$(jq -cn --arg w "$what" --arg y "$why" --arg s "$source" --argjson o "$oj" '{what: $w, why: $y, source: $s, options: $o}')"
+  # question: what was open, phrased so a cold reader can answer it.
+  # decision: the answer chosen, stated plainly. what mirrors decision for old readers.
+  entry="$(jq -cn --arg q "$question" --arg w "$what" --arg y "$why" --arg s "$source" --argjson o "$oj" '{question: $q, decision: $w, what: $w, why: $y, source: $s, options: $o}')"
   id="$(add_decision "$file" "$key" "$entry")"
   mkdir -p "$STATE"; jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg id "$id" --arg k "$key" --arg r "$(repo_name)" --arg w "$what" --arg s "$source" \
     '{ts:$ts, event:"decision", id:$id, issue:$k, repo:$r, what:$w, source:$s}' >>"$HISTORY"
   echo "$id"
+}
+
+cmd_reword() {
+  local id="${1:?ID}" q="" d="" y="" key file; shift
+  while [ $# -gt 0 ]; do case "$1" in
+    --question) q="$2"; shift 2 ;; --decision) d="$2"; shift 2 ;; --why) y="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+  key="${id%.d*}"; file="$(decision_file "$key")"
+  jq -e --arg id "$id" 'any(.decisions[]?; .id == $id)' "$file" >/dev/null || die "no decision $id"
+  jq --arg id "$id" --arg q "$q" --arg d "$d" --arg y "$y" '.decisions |= map(if .id == $id then
+      (if $q != "" then .question = $q else . end) | (if $d != "" then .decision = $d | .what = $d else . end)
+      | (if $y != "" then .why = $y else . end) else . end)' "$file" >"$file.tmp" && mv "$file.tmp" "$file"
 }
 
 cmd_comment() {
@@ -791,6 +808,7 @@ case "$sub" in
   owed) cmd_owed "$@" ;;
   decision) cmd_decision "$@" ;;
   comment) cmd_comment "$@" ;;
+  reword) cmd_reword "$@" ;;
   answer) cmd_answer "$@" ;;
   remove) cmd_remove "${1:?ISSUE}" ;;
   _build) cmd__build "$@" ;;

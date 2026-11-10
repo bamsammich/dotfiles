@@ -69,7 +69,17 @@ Post one comment on the parent issue, titled **Build decisions**, and keep updat
 
 Every decision on the list is yours or the user's. Builders never appear as a source.
 
-**Log every decision with `crew` too.** The Linear comment is the record your peers read. The user reviews decisions on the board in Herdr, which only sees what `crew` records. So each time you add a line to the Build decisions comment, also run `crew decision <ISSUE> --source plan|ratified|escalation|design --what "<the decision, one sentence>" --why "<the reason>"`. Use `--parent <PARENT>` in place of `<ISSUE>` for a decision about the whole parent, and add `--option "<Label>: <detail>"` for alternatives you weighed. `crew ask --auto` logs its own decision, so don't log those twice.
+**Log every decision with `crew` too.** The Linear comment is the record your peers read. The user reviews decisions on the board in Herdr, which only sees what `crew` records. So each time you add a line to the Build decisions comment, also run `crew decision <ISSUE> --source plan|ratified|escalation|design --question "<what was open>" --decision "<the answer chosen>" --why "<the reason>"`. Use `--parent <PARENT>` in place of `<ISSUE>` for a decision about the whole parent, and add `--option "<Label>: <detail>"` for each alternative you weighed but didn't choose. `crew ask --auto` logs its own decision, so don't log those twice.
+
+The user reads these cold, often the next morning, with no memory of the run. Word each part for that reader:
+
+| Part | Write it as | Example |
+| --- | --- | --- |
+| `--question` | A real question that names the function, input or behavior involved, so it makes sense without the code open | "What does Slugify do with DEL (0x7F) and other ASCII control bytes?" |
+| `--decision` | The answer, stated plainly, with a concrete example when there is one | "Treat them as separators: \"a\x7fb\" becomes \"a-b\"." |
+| `--why` | One sentence of reasoning. A test or spec line that pins it goes here too. | "They are ASCII, and the spec drops only non-ASCII characters." |
+
+Never log an outcome as the question ("QA reviewed without pre-scans"), and never leave the choice implicit. If a decision is wrong or unclear later, fix its wording with `crew reword <ID> --question ... --decision ...`.
 
 **Never pause.** Even a planning decision that contradicts the design or widens an issue's scope does not stop the run. Decide it with `crew ask --auto` (see "Deciding for the user"), record it on Linear, and keep going. The user reviews every decision in the morning and can change any of them.
 
@@ -107,7 +117,7 @@ The `crew scan` runs use the config's `scan_builder` and cost no Anthropic token
 
 **On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, don't loop. Run `crew ask --auto`, offering at least a second fix round and you fixing it yourself, plus any spec change that would make the problem go away, and carry out your recommendation.
 
-**Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`, with `crew decision <ISSUE> --source ratified`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
+**Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`, with `crew decision <ISSUE> --source ratified --question ... --decision ...`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
 
 ## 6. Open draft PRs
 
