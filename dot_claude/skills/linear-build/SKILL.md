@@ -107,7 +107,7 @@ For each child that passed review, push its branch and open a **draft** PR with 
 
 End the PR body with the attribution line from the system reminder.
 
-Then `crew remove <ISSUE>` for each finished worktree. The branches stay.
+Record each PR with `crew pr <ISSUE> <PR URL>`, so the user's build history links issue, branch and PR. Then `crew remove <ISSUE>` for each finished worktree. It archives the worktree's `.crew/` folder first, and the branches stay.
 
 ## 7. Report
 

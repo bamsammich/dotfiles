@@ -16,11 +16,18 @@
 #   crew status ISSUE                                     print result.json
 #   crew builders                                         list builders and busy slots
 #   crew test-cmd [get | set CMD]                         per-repo default test command
-#   crew remove ISSUE                                     remove worktree (branch is kept)
+#   crew pr     ISSUE URL                                 record the draft PR for an issue
+#   crew remove ISSUE                                     archive .crew/, remove worktree (branch kept)
+#
+# Every run start, build result, PR and removal is appended as one JSON line
+# to ~/.local/state/crew/history.jsonl, and `crew remove` copies the
+# worktree's .crew/ folder to ~/.local/state/crew/archive/ first, so finished
+# builds stay visible after their worktrees are gone.
 #
 # Each entry in "attempts" (config default, or --attempts at seal) is one
 # build attempt on the named builder, so "local,deepseek" tries the local
 # model first and DeepSeek second.
+
 # crew needs bash 4+ (mapfile). Launchers such as the Herdr app start it with
 # a minimal PATH, where `env bash` finds macOS's bash 3.2; switch to Homebrew's.
 if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
@@ -62,6 +69,17 @@ wt_path() { echo "$(expand "$(cfg .worktree_root)")/$(repo_name)/$(upper "$1")";
 need_wt() { local wt; wt="$(wt_path "$1")"; [ -d "$wt/.crew" ] || die "no crew worktree for $1 (run: crew init $1)"; echo "$wt"; }
 meta() { jq -r "$2" "$1/.crew/meta.json"; }
 meta_set() { local f="$1/.crew/meta.json"; jq "$2" "$f" >"$f.tmp" && mv "$f.tmp" "$f"; }
+HISTORY="$STATE/history.jsonl"
+ARCHIVE="$STATE/archive"
+history_add() { # history_add WT EVENT [JSON_FIELDS]: append one event line
+  local wt="$1" ev="$2" extra="${3:-}"; [ -n "$extra" ] || extra='{}'
+  mkdir -p "$STATE"
+  jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ev "$ev" \
+        --slurpfile m "$wt/.crew/meta.json" --argjson x "$extra" \
+    '{ts:$ts, event:$ev, issue:$m[0].issue, repo:($m[0].repo|split("/")|last), repo_path:$m[0].repo,
+      branch:$m[0].branch, worktree:$m[0].worktree} + $x' >>"$HISTORY" 2>/dev/null || true
+}
+
 builder_ok() { jq -e --arg b "$1" '.builders[$b]' "$CONF" >/dev/null || die "unknown builder '$1' (see: crew builders)"; }
 
 # ---------------------------------------------------------------- init / seal
@@ -251,6 +269,7 @@ write_result() { # write_result WT STATUS ATTEMPT_LOG_JSON [NOTE]
              last_failure:".crew/last-failure.txt", log:".crew/build.log"}}' \
     >"$sd/result.json.tmp"
   mv "$sd/result.json.tmp" "$sd/result.json"
+  history_add "$wt" result "$(jq -c '{status, note, attempts, attempt_log, head, risk_security: .risk.security}' "$sd/result.json")"
 }
 
 # Herdr marks a terminal as an agent when its program prints OSC 7501 status
@@ -443,7 +462,10 @@ cmd_run() {
     [ -n "$(meta "$wt" '.stub_commit // empty')" ] || die "$issue is not sealed"
     wts+=("$wt")
   done
-  for wt in "${wts[@]}"; do launch "$wt" "$*"; done
+  for wt in "${wts[@]}"; do
+    history_add "$wt" started "$(jq -cn --arg run "$*" --argjson a "$(meta "$wt" '.attempts')" '{run:$run, attempts:$a}')"
+    launch "$wt" "$*"
+  done
   wait_results "${wts[@]}"
 }
 
@@ -499,10 +521,21 @@ cmd_test_cmd() {
   esac
 }
 
+cmd_pr() {
+  local wt url="${2:-}"; wt="$(need_wt "${1:?ISSUE}")"
+  [ -n "$url" ] || die "usage: crew pr ISSUE URL"
+  meta_set "$wt" ".pr=$(jq -n --arg u "$url" '$u')"
+  history_add "$wt" pr "$(jq -cn --arg u "$url" '{pr:$u}')"
+  say "recorded PR for $(meta "$wt" .issue): $url"
+}
+
 cmd_remove() {
-  local wt branch; wt="$(need_wt "$1")"; branch="$(meta "$wt" .branch)"
+  local wt branch issue dest; wt="$(need_wt "$1")"; branch="$(meta "$wt" .branch)"; issue="$(meta "$wt" .issue)"
+  dest="$ARCHIVE/$(repo_name)/$issue/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$dest" && cp -R "$wt/.crew/." "$dest/"
+  history_add "$wt" removed "$(jq -cn --arg a "$dest" '{archive:$a}')"
   git -C "$(repo_root)" worktree remove --force "$wt"
-  say "removed $wt (branch $branch kept)"
+  say "removed $wt (branch $branch kept; .crew archived to $dest)"
 }
 
 sub="${1:-}"; shift || true
@@ -517,7 +550,8 @@ case "$sub" in
   status) cat "$(need_wt "${1:?ISSUE}")/.crew/result.json" ;;
   builders) cmd_builders ;;
   test-cmd) cmd_test_cmd "$@" ;;
+  pr) cmd_pr "$@" ;;
   remove) cmd_remove "${1:?ISSUE}" ;;
   _build) cmd__build "$@" ;;
-  *) sed -n '2,25p' "$SELF" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$SELF"; exit 1 ;;
 esac
