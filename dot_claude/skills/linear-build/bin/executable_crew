@@ -253,11 +253,30 @@ write_result() { # write_result WT STATUS ATTEMPT_LOG_JSON [NOTE]
   mv "$sd/result.json.tmp" "$sd/result.json"
 }
 
+# Herdr marks a terminal as an agent when its program prints OSC 7501 status
+# records: ESC ] 7501 ; state=<state>:app=crew[:kind=..][:msg=..] ESC \.
+# They go to /dev/tty so they reach the terminal and stay out of build.log;
+# in a background build there is no tty and they are dropped.
+herdr_status() { # herdr_status STATE [MSG] [KIND]
+  local rec="state=$1:app=crew" msg="${2:-}"
+  msg="$(printf '%s' "$msg" | tr -cd '[:alnum:] ._/,()-' | cut -c1-80)"
+  [ -n "${3:-}" ] && rec="$rec:kind=$3"
+  [ -n "$msg" ] && rec="$rec:msg=$msg"
+  { printf '\033]7501;%s\033\\' "$rec" >/dev/tty; } 2>/dev/null || true
+}
+
 BUILD_WT=""
 build_exit() {
   release_slot
   if [ -n "$BUILD_WT" ] && [ ! -f "$BUILD_WT/.crew/result.json" ]; then
     write_result "$BUILD_WT" error '[]' "crew _build stopped before reporting; see .crew/build.log" || true
+    herdr_status error "crew stopped before reporting"
+  fi
+  # In a Herdr app tab, stay open so the tab keeps its final status;
+  # status clears once the program exits. Closing the tab ends it.
+  if [ "${CREW_HOLD_TAB:-}" = 1 ] && [ -r /dev/tty ]; then
+    echo; echo "crew: build finished. Close this tab, or press Enter, when you are done reading."
+    read -r _ </dev/tty || true
   fi
 }
 
@@ -276,9 +295,11 @@ cmd__build() { # internal: _build WT
   for ((i = 1; i <= n; i++)); do
     b="${attempts[$((i - 1))]}"
     echo "=== $issue: attempt $i/$n on $b ($(date '+%H:%M:%S'))"
+    herdr_status working "$issue attempt $i of $n on $b"
     run_builder "$wt" "$b" "crew $issue #$i" "$(build_prompt "$wt" "$i")"
     if [ -s "$sd/questions.md" ]; then
       echo "=== $issue: $b stopped with open questions"
+      herdr_status blocked "$issue has open questions for Claude" question
       log="$(jq -c --arg b "$b" '. + [{builder:$b, outcome:"question"}]' <<<"$log")"
       write_result "$wt" question "$log" "$b has open questions for Claude"; return 0
     fi
@@ -289,10 +310,12 @@ cmd__build() { # internal: _build WT
       printf '%s changed protected files and crew reverted them:\n%s\n\nIts edits are saved in .crew/protected-violation.diff. Decide whether the stubs or tests need to change.\n' \
         "$b" "$changed" >"$sd/questions.md"
       echo "=== $issue: protected files changed; reverted and escalating"
+      herdr_status blocked "$issue builder edited protected files" question
       log="$(jq -c --arg b "$b" '. + [{builder:$b, outcome:"protected_edit"}]' <<<"$log")"
       write_result "$wt" question "$log" "$b edited protected files"; return 0
     fi
     echo "=== $issue: running tests: $test"
+    herdr_status working "$issue running tests"
     if (cd "$wt" && timeout "${ttest}m" bash -c "$test") >"$sd/test-$i.log" 2>&1; then
       if [ -n "$(git -C "$wt" status --porcelain)" ]; then
         git -C "$wt" add -A
@@ -304,11 +327,12 @@ cmd__build() { # internal: _build WT
       fi
       log="$(jq -c --arg b "$b" '. + [{builder:$b, outcome:"passed"}]' <<<"$log")"
       echo "=== $issue: tests pass; running pre-review scans on $(cfg .scan_builder)"
+      herdr_status working "$issue pre-review scan"
       rm -f "$sd/feedback.md"
       do_scan "$wt" critic
       write_result "$wt" passed "$log"
       if [ "$(jq -r .risk.security "$sd/result.json")" = true ]; then do_scan "$wt" security; write_result "$wt" passed "$log"; fi
-      echo "=== $issue: passed"; return 0
+      echo "=== $issue: passed"; herdr_status done "$issue passed"; return 0
     fi
     echo "=== $issue: tests failed"
     tail -n 150 "$sd/test-$i.log" >"$sd/last-failure.txt"
@@ -316,6 +340,7 @@ cmd__build() { # internal: _build WT
   done
   write_result "$wt" failed "$log" "tests still failing after $n attempts"
   echo "=== $issue: failed"
+  herdr_status error "$issue tests still failing"
 }
 
 use_herdr() { # a herdr server is running and config allows it
@@ -361,7 +386,7 @@ use_herdr_app() {
 app_launch() { # app_launch WT RUN_LABEL ISSUE
   local wt="$1" label="$2" issue="$3" argv out term
   argv="$(jq -cn --arg path "$PATH" --arg conf "$CONF_DIR" --arg repos "$REPOS" --arg self "$SELF" --arg wt "$wt" \
-    '["env", "PATH=" + $path, "CREW_CONFIG=" + $conf, "CREW_REPOS=" + $repos, $self, "_build", $wt]')"
+    '["env", "PATH=" + $path, "CREW_CONFIG=" + $conf, "CREW_REPOS=" + $repos, "CREW_HOLD_TAB=1", $self, "_build", $wt]')"
   if [ -z "$APP_SPACE" ]; then
     out="$(herdr-app do space.new --name "crew $label" --folder "$wt" --tab "$issue" --argv "$argv" 2>/dev/null)" || return 1
     APP_SPACE="$(jq -r '.space // empty' <<<"$out")"
