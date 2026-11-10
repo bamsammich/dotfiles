@@ -21,6 +21,14 @@
 # Each entry in "attempts" (config default, or --attempts at seal) is one
 # build attempt on the named builder, so "local,deepseek" tries the local
 # model first and DeepSeek second.
+# crew needs bash 4+ (mapfile). Launchers such as the Herdr app start it with
+# a minimal PATH, where `env bash` finds macOS's bash 3.2; switch to Homebrew's.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$b" ] && exec "$b" "$0" "$@"
+  done
+  echo "crew: needs bash 4 or newer" >&2; exit 1
+fi
 set -euo pipefail
 # Bash 5.2+ treats "&" in a ${var//pat/rep} replacement as the match; prompts
 # can contain "&", so turn that off.
@@ -337,13 +345,44 @@ herdr_pane_for() { # herdr_pane_for WT LABEL: set HERDR_NEW to a pane id for the
   HERDR_PANE="$pid"; HERDR_NEW="$pid"; HERDR_COUNT=$((HERDR_COUNT + 1))
 }
 
-launch() { # launch WT [WORKSPACE_LABEL]
+# The Herdr desktop app shows builds when its window is open. Each `crew run`
+# gets one space named after the run, with one tab per build named after its
+# issue. The app starts the tab's program through its engine, herdr-core,
+# which runs it with a minimal environment, so PATH and crew's settings are
+# passed on the command line.
+APP_SPACE=""
+use_herdr_app() {
+  case "$(cfg .herdr)" in off|false|tui) return 1 ;; esac
+  command -v herdr-app >/dev/null 2>&1 || return 1
+  local s; s="$(herdr-app status 2>/dev/null || true)"
+  [ -n "$(jq -r '.space // empty' <<<"$s" 2>/dev/null)" ]
+}
+
+app_launch() { # app_launch WT RUN_LABEL ISSUE
+  local wt="$1" label="$2" issue="$3" argv out term
+  argv="$(jq -cn --arg path "$PATH" --arg conf "$CONF_DIR" --arg repos "$REPOS" --arg self "$SELF" --arg wt "$wt" \
+    '["env", "PATH=" + $path, "CREW_CONFIG=" + $conf, "CREW_REPOS=" + $repos, $self, "_build", $wt]')"
+  if [ -z "$APP_SPACE" ]; then
+    out="$(herdr-app do space.new --name "crew $label" --folder "$wt" --tab "$issue" --argv "$argv" 2>/dev/null)" || return 1
+    APP_SPACE="$(jq -r '.space // empty' <<<"$out")"
+  else
+    out="$(herdr-app do tab.new --space "$APP_SPACE" --name "$issue" --folder "$wt" --argv "$argv" 2>/dev/null)" || return 1
+  fi
+  term="$(jq -r '.terminal // empty' <<<"$out" 2>/dev/null)"
+  [ -n "$term" ] || return 1
+  say "$issue: building in the Herdr app (space \"crew $label\", tab $issue, terminal $term)"
+}
+
+launch() { # launch WT [RUN_LABEL]
   local wt="$1" label="${2:-}" issue pid; issue="$(meta "$wt" .issue)"
   rm -f "$wt/.crew/result.json"
+  if use_herdr_app && app_launch "$wt" "${label:-$issue}" "$issue"; then
+    return
+  fi
   if use_herdr && herdr_pane_for "$wt" "${label:-$issue}"; then
     pid="$HERDR_NEW"
     herdr pane rename "$pid" "$issue" >/dev/null 2>&1 || true
-    if herdr pane run "$pid" "CREW_CONFIG=$(printf %q "$CONF_DIR") $(printf %q "$SELF") _build $(printf %q "$wt")" >/dev/null 2>&1; then
+    if herdr pane run "$pid" "PATH=$(printf %q "$PATH") CREW_CONFIG=$(printf %q "$CONF_DIR") $(printf %q "$SELF") _build $(printf %q "$wt")" >/dev/null 2>&1; then
       say "$issue: building in herdr pane $pid"; return
     fi
     say "$issue: herdr pane run failed; building in the background"

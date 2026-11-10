@@ -69,7 +69,7 @@ Every decision on the list is yours or the user's. Builders never appear as a so
 
 ## 4. Build
 
-Run `crew run <CHILD> <CHILD> ...` as a **background** Bash command (`run_in_background: true`). It launches one build per issue, in Herdr panes when Herdr is installed, and prints a JSON array of results once every build finishes. Do not poll it, read the build logs, or tail anything while it runs. You are woken when it exits.
+Run `crew run <CHILD> <CHILD> ...` as a **background** Bash command (`run_in_background: true`). It launches one build per issue, shown as tabs in the Herdr app when its window is open, and prints a JSON array of results once every build finishes. Do not poll it, read the build logs, or tail anything while it runs. You are woken when it exits.
 
 Each result has a `status`, and `attempt_log` shows which builder made each attempt:
 
