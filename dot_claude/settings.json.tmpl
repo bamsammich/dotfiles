@@ -74,6 +74,11 @@
           {
             "type": "command",
             "command": "{{ .chezmoi.homeDir }}/.claude/hooks/linear-build-hint.sh"
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh prompt",
+            "timeout": 5
           }
         ]
       }
@@ -91,6 +96,15 @@
             "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py pretool",
             "timeout": 10,
             "statusMessage": "Prose tripwire..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh pretool",
+            "timeout": 5
           }
         ]
       }
@@ -116,6 +130,33 @@
             "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py stop",
             "timeout": 15,
             "statusMessage": "Prose tripwire..."
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh subagent-stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh notify",
+            "timeout": 5
           }
         ]
       }

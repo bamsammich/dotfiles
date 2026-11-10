@@ -36,6 +36,10 @@ done
 for p in "$1"/parents/*/*.json; do
   [ -f "$p" ] || continue
   jq -c '{kind: "parent"} + .' "$p" 2>/dev/null
+done
+for o in "$1"/orchestrators/*.json; do
+  [ -f "$o" ] || continue
+  jq -c '{kind: "orchestrator"} + .' "$o" 2>/dev/null
 done`;
 
 const ago = (iso) => {
@@ -143,11 +147,12 @@ export default class CrewBoard extends View {
   refresh(cx) {
     cx.spawn(async (cx) => {
       const r = await exec("sh", ["-c", SCAN, "crew-board", STATE()], { timeout: 10000 }).catch(() => null);
-      const kids = [], parents = new Map();
+      const kids = [], parents = new Map(), orch = new Map();
       for (const line of (r?.stdout ?? "").split("\n")) {
         if (!line.trim()) continue;
         let o; try { o = JSON.parse(line); } catch (_) { continue; }
         if (o.kind === "parent") parents.set(`${o.repo}|${o.key}`, o);
+        else if (o.kind === "orchestrator") orch.set(o.terminal, o);
         else kids.push(o);
       }
       for (const c of kids) {
@@ -155,6 +160,7 @@ export default class CrewBoard extends View {
       }
       this.children_ = kids;
       this.parents = parents;
+      this.orch = orch;
       for (const [key, par] of parents) {
         if (par.orchestrator && !this.inputs.has(`card-${key}`)) this.inputs.set(`card-${key}`, makeReply(par.key));
       }
@@ -220,6 +226,21 @@ export default class CrewBoard extends View {
       }
     }
     this.seen = now;
+  }
+
+  // What the orchestrating Claude is doing, from the crew-activity hook.
+  claudeFor(parent) {
+    if (!parent?.orchestrator) return null;
+    const a = this.orch?.get(parent.orchestrator) ?? null;
+    if (!a) return null;
+    const live = terminalsLive(parent.orchestrator);
+    return { ...a, state: live ? a.state : "gone" };
+  }
+
+  claudeOn(claude, issue) {
+    if (!claude || claude.state !== "working") return false;
+    const text = [claude.doing, ...(claude.agents ?? []).map((x) => `${x.type} ${x.about}`)].join(" ");
+    return text.includes(issue);
   }
 
   agentFor(issue) {
@@ -354,6 +375,7 @@ export default class CrewBoard extends View {
         .child(div().text_color(t.muted).child(
           !kids.length ? "No children in flight" : atPR === kids.length ? "All ready for your review" : `${atPR} of ${kids.length} ready for review · ${steps}/${total} steps`))
         .when(counts.length > 0, (el) => el.child(h_flex().flex_wrap().gap(4).children(counts))))
+      .child(this.claudeLine(g, prog, id, t))
       .when(g.parent?.waiting === "you", (el) => el.child(this.yourTurn(g.parent, id, t, kids.find((c) => c.meta.stage === "escalated"))))
       .when(!folded, (el) => el.child(this.replyBox(g, id, t)))
       .when(!folded && kids.length > 0, (el) => el
@@ -361,6 +383,48 @@ export default class CrewBoard extends View {
           .child(div().w(KEY))
           .child(h_flex().w(COL * STEPS.length).children(STEPS.map((s) => h_flex().w(COL).justify_center().child(s)))))
         .children(prog.map(({ c, p }, i) => this.childRow(c, p, i, t))));
+  }
+
+  // One line on what the orchestrating Claude is doing, with a nudge when
+  // children wait on Claude and Claude has stopped.
+  claudeLine(g, prog, id, t) {
+    const claude = this.claudeFor(g.parent);
+    if (!claude) return div();
+    const waiting = prog.filter(({ p }) => p.mode === "waiting" && p.who === "claude").map(({ c }) => c);
+    const color = { working: t.working, idle: t.dim, blocked: t.blocked, gone: t.blocked }[claude.state] ?? t.dim;
+    const label = { working: "Claude is working", idle: "Claude is idle", blocked: "Claude needs you", gone: "Claude's terminal is closed" }[claude.state] ?? "Claude";
+    const dot = div().w(8).h(8).rounded(4).bg(color).flex_none()
+      .when(claude.state === "working", (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1200 }));
+    const agents = claude.agents ?? [];
+    return v_flex().id(`${id}-claude`).mx(14).mb(10).px(10).py(8).gap(4).rounded(8).bg(t.background).min_w(0)
+      .cursor_pointer().hover((s) => s.bg(t.hover))
+      .on_click(() => g.parent?.orchestrator && run("agent.focus", { terminal: g.parent.orchestrator }))
+      .child(h_flex().gap(8).items_center()
+        .child(dot)
+        .child(div().font_semibold().text_color(claude.state === "working" ? t.foreground : color).child(label))
+        .child(div().flex_1())
+        .child(div().text_color(t.dim).text_size(11).child(ago(claude.ts) === "now" ? "just now" : `${ago(claude.ts)} ago`)))
+      .when(Boolean(claude.doing) && claude.state !== "idle", (el) => el.child(div().pl(16).min_w(0).text_color(t.muted).child(claude.doing)))
+      .when(agents.length > 0, (el) => el.child(v_flex().pl(16).gap(2).children(agents.map((a) =>
+        h_flex().gap(6).items_center().text_size(11)
+          .child(div().w(6).h(6).rounded(3).bg(t.working).flex_none().loop("opacity", { from: 0.35, to: 1, period: 1200 }))
+          .child(div().text_color(t.foreground).child(a.type ?? "subagent"))
+          .child(div().flex_1().min_w(0).text_color(t.dim).child(a.about ?? ""))))))
+      .when(claude.state === "idle" && waiting.length > 0, (el) => el.child(h_flex().pl(16).pt(2).gap(8).items_center()
+        .child(div().flex_1().min_w(0).text_color(t.accent).text_size(12)
+          .child(`${waiting.map((c) => c.meta.issue).join(", ")} ${waiting.length === 1 ? "waits" : "wait"} on Claude`))
+        .child(h_flex().id(`${id}-nudge`).h(26).px(10).items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground)
+          .text_size(12).cursor_pointer()
+          .on_click((e, cx) => { cx.stop_propagation(); this.nudge(g, waiting); })
+          .child("Nudge Claude"))));
+  }
+
+  nudge(g, waiting) {
+    const [, parentKey] = g.key.split("|");
+    const list = waiting.map((c) => `${c.meta.issue} (${c.meta.stage_note || c.meta.stage})`).join("; ");
+    hc(["send", g.parent.orchestrator, `[crew board, ${parentKey}] Please continue with the children waiting on you: ${list}`])
+      .then(() => notify({ title: "Nudged Claude", body: list, level: "info" }))
+      .catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
   }
 
   count(text, color, filled, t) {
@@ -427,6 +491,8 @@ export default class CrewBoard extends View {
 
   childRow(c, p, index, t) {
     const issue = c.meta.issue;
+    const claude = this.claudeFor(this.parents.get(`${c.meta.repo}|${c.meta.parent ?? ""}`));
+    if (p.who === "claude" && this.claudeOn(claude, issue)) p = { ...p, mode: "active" };
     const agent = this.agentFor(issue);
     const why = this.reason(c, p);
     const whyColor = p.mode === "waiting" ? this.whoColor(p.who, t) : t.muted;
