@@ -11,7 +11,8 @@
 #                                                         record a parent issue's title and whose turn it is
 #   crew stage  ISSUE planning|reviewing|fixing|escalated|pr|done [--note TEXT]
 #                                                         record a step Claude is on (build steps record themselves)
-#   crew review ISSUE LENS pass|fix-required [FINDINGS]   record one Opus reviewer's verdict
+#   crew review ISSUE LENS pass|fix-required [FINDINGS] [--file REPORT.md]
+#                                                         record one Opus reviewer's verdict and report
 #   crew path   ISSUE                                     print worktree path
 #   crew seal   ISSUE [--test CMD] [--attempts B,B] [--protect FILE...]
 #                                                         record stub commit, rules and builders
@@ -598,8 +599,11 @@ cmd_stage() {
 }
 
 cmd_review() {
-  local wt lens verdict n; wt="$(need_wt "${1:?ISSUE}")"; lens="${2:?LENS}"; verdict="${3:?VERDICT}"; n="${4:-0}"
+  local wt lens verdict n="0" file=""; wt="$(need_wt "${1:?ISSUE}")"; lens="${2:?LENS}"; verdict="${3:?VERDICT}"; shift 3
+  while [ $# -gt 0 ]; do case "$1" in --file) file="$2"; shift 2 ;; *) n="$1"; shift ;; esac; done
   case "$verdict" in pass|fix-required) ;; *) die "verdict is pass or fix-required" ;; esac
+  # The reviewer's full report, so the board can show it rendered.
+  if [ -n "$file" ]; then [ -s "$file" ] || die "no report at $file"; cp "$file" "$wt/.crew/review-$lens.md"; fi
   meta_set "$wt" ".reviews[$(jq -n --arg l "$lens" '$l')] = {verdict: $(jq -n --arg v "$verdict" '$v'), findings: ($n|tonumber), ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
   history_add "$wt" review "$(jq -cn --arg l "$lens" --arg v "$verdict" --argjson n "$n" '{lens:$l, verdict:$v, findings:$n}')"
 }

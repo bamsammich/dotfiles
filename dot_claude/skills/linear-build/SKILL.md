@@ -95,7 +95,7 @@ Reviews are Opus subagents. Give each one only its worktree path, issue key and 
 
 The `crew scan` runs use the config's `scan_builder` and cost no Anthropic tokens. Run them in the background in parallel before the reviewers that need them.
 
-**Board updates during review.** Before launching reviewers on a child, run `crew stage <ISSUE> reviewing --note "Claude: <reviewers> reviewing"`. After each reviewer returns, run `crew review <ISSUE> <lens> pass|fix-required <number of blocking plus should-fix findings>`.
+**Board updates during review.** Before launching reviewers on a child, run `crew stage <ISSUE> reviewing --note "Claude: <reviewers> reviewing"`. After each reviewer returns, write its full report to a file and run `crew review <ISSUE> <lens> pass|fix-required <number of blocking plus should-fix findings> --file <report.md>`. The board renders that report for the user.
 
 **On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, report them to the user rather than looping.
 

@@ -11,7 +11,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView, InputState, Input } from "gpui-base";
-import { agents, terminals, exec, hc, home, readTextFile, run, theme, props, openOverlay, closeOverlay, notify, playSound } from "herdr";
+import { agents, terminals, nextCommand, exec, hc, home, readTextFile, run, theme, props, openOverlay, closeOverlay, notify, playSound } from "herdr";
 
 const STATE = () => `${home()}/.local/state/crew`;
 const CREW = () => `${home()}/.claude/skills/linear-build/bin/crew`;
@@ -78,6 +78,28 @@ function progressOf(c, agent) {
 
 const WHO_LABEL = { builder: "builder", claude: "Claude", you: "you" };
 
+// Reply state for one text box: created outside render, as gpui requires.
+function makeReply(parentKey, placeholder) {
+  const st = { input: InputState.new({ value: "", placeholder: placeholder ?? `Message Claude about ${parentKey}...` }), text: "", sent: "", onSubmit: null };
+  st.input.on("change", (_e, cx) => { st.text = st.input.value(); cx.notify(); });
+  st.input.on("submit", (_e, cx) => st.onSubmit && st.onSubmit(cx));
+  return st;
+}
+
+// Type the reply into the orchestrating Claude's terminal, tagged with
+// what it is about so Claude knows which parent or child the user means.
+function sendReply(st, orch, about, cx) {
+  const text = st.text.trim();
+  if (!text || !orch) return;
+  hc(["send", orch, `[crew board, ${about}] ${text}`]).then((r) => {
+    if (r.code !== 0) notify({ title: "Could not reach Claude", body: (r.stderr || "hc send failed").slice(0, 200), level: "error" });
+  }).catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
+  st.sent = text.length > 60 ? `${text.slice(0, 57)}...` : text;
+  st.text = "";
+  st.input.set_value("");
+  cx.notify();
+}
+
 function terminalsLive(address) {
   try { return terminals().some((x) => x.address === address && x.state === "live"); } catch (_) { return false; }
 }
@@ -85,6 +107,8 @@ function terminalsLive(address) {
 export default class CrewBoard extends View {
   init(_props, cx) {
     if (props()?.file) return this.initViewer(cx);
+    if (props()?.detail) return this.initDetail(cx);
+    this.inputs = new Map();
     this.children_ = [];
     this.parents = new Map();
     this.history = [];
@@ -95,6 +119,24 @@ export default class CrewBoard extends View {
     this.refreshCapacity(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
     cx.timer.every(CAPACITY_MS, (cx) => this.refreshCapacity(cx));
+    // `crew-board.next` (bindable in keys.json) opens the child that most needs you.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "next") this.openMostUrgent();
+        cx.notify();
+      }
+    });
+  }
+
+  openMostUrgent() {
+    const rank = (c) => {
+      const p = progressOf(c, this.agentFor(c.meta.issue));
+      if (p.mode !== "waiting") return 0;
+      return { you: 3, claude: 2, builder: 1 }[p.who] ?? 0;
+    };
+    const best = [...this.children_].sort((a, b) => rank(b) - rank(a))[0];
+    if (best) this.openDetail(best);
   }
 
   // ------------------------------------------------------------ data
@@ -113,6 +155,9 @@ export default class CrewBoard extends View {
       }
       this.children_ = kids;
       this.parents = parents;
+      for (const [key, par] of parents) {
+        if (par.orchestrator && !this.inputs.has(`card-${key}`)) this.inputs.set(`card-${key}`, makeReply(par.key));
+      }
       this.history = this.parseHistory(await readTextFile(`${STATE()}/history.jsonl`), kids);
       this.notifyChanges(kids, parents);
       cx.notify();
@@ -201,6 +246,7 @@ export default class CrewBoard extends View {
   // ------------------------------------------------------------ UI
   render(cx) {
     if (props()?.file) return this.renderViewer(cx);
+    if (props()?.detail) return this.renderDetail(cx);
     const t = theme();
     const groups = new Map();
     for (const c of this.children_) {
@@ -339,38 +385,22 @@ export default class CrewBoard extends View {
       return div().mx(14).mb(10).text_size(11).text_color(t.dim)
         .child("To reply to Claude here, start the work from Claude Code in a Herdr tab.");
     }
-    if (!this.inputs) this.inputs = new Map();
-    let st = this.inputs.get(id);
-    if (!st) {
-      st = { input: InputState.new({ value: "", placeholder: `Message Claude about ${parentKey}...` }), text: "", sent: "" };
-      st.input.on("change", (_e, cx) => { st.text = st.input.value(); cx.notify(); });
-      st.input.on("submit", (_e, cx) => this.send(st, orch, parentKey, cx));
-      this.inputs.set(id, st);
-    }
+    const st = this.inputs.get(id);
+    if (!st) return div();
+    st.onSubmit = (cx) => sendReply(st, orch, parentKey, cx);
     const live = terminalsLive(orch);
     return v_flex().mx(14).mb(10).gap(4)
       .child(h_flex().gap(6).items_center()
         .child(Input.new(st.input).flex_1().min_w(0).h(30).px(8).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(12))
         .child(h_flex().id(`${id}-send`).h(30).px(10).items_center().rounded(7).bg(st.text.trim() ? t.solid : t.raised)
           .text_color(st.text.trim() ? t.solid_foreground : t.dim).text_size(12).cursor_pointer()
-          .on_click((_e, cx) => this.send(st, orch, parentKey, cx)).child("Send")))
+          .on_click((_e, cx) => sendReply(st, orch, parentKey, cx)).child("Send")))
       .child(h_flex().gap(10).text_size(11)
         .child(this.link(`${id}-goto`, "Open Claude's terminal", () => run("agent.focus", { terminal: orch }), t))
         .child(div().text_color(t.dim).child(st.sent ? `Sent: ${st.sent}` : live ? "" : "Claude's terminal isn't running")));
   }
 
-  send(st, orch, parentKey, cx) {
-    const text = st.text.trim();
-    if (!text) return;
-    // Prefixed so Claude knows which parent issue the reply is about.
-    hc(["send", orch, `[crew board, ${parentKey}] ${text}`]).then((r) => {
-      if (r.code !== 0) notify({ title: "Could not reach Claude", body: (r.stderr || "hc send failed").slice(0, 200), level: "error" });
-    }).catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
-    st.sent = text.length > 60 ? `${text.slice(0, 57)}...` : text;
-    st.text = "";
-    st.input.set_value("");
-    cx.notify();
-  }
+
 
   // A dot per step, each centered in a fixed column so it sits under its label.
   track(p, t) {
@@ -401,7 +431,7 @@ export default class CrewBoard extends View {
     return v_flex().id(`row-${c.dir}`).w_full().min_w(0).px(14).py(9).gap(5).border_t(1).border_color(t.border)
       .when(index === 0, (el) => el.mt(4))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => agent && run("agent.focus", { terminal: agent.address }))
+      .on_click(() => this.openDetail(c))
       .child(h_flex().items_center()
         .child(div().w(KEY).flex_none().font_semibold().child(issue))
         .child(this.track(p, t))
@@ -432,8 +462,17 @@ export default class CrewBoard extends View {
     return m.stage_note || "";
   }
 
+  openDetail(c) {
+    const key = `${c.meta.repo}|${c.meta.parent ?? ""}`;
+    const par = this.parents.get(key);
+    openOverlay({ mod: "crew-board", kind: "window", key: `crew-detail-${c.meta.issue}`, width: 760, height: 680,
+      props: { detail: c.dir, issue: c.meta.issue, parentKey: c.meta.parent ?? "", orchestrator: par?.orchestrator ?? null } });
+  }
+
   links(c, t) {
     const issue = c.meta.issue, out = [];
+    const agent = this.agentFor(issue);
+    if (agent) out.push(this.link(`t-${c.dir}`, "Terminal", () => run("agent.focus", { terminal: agent.address }), t));
     if (c.questions) out.push(this.link(`q-${c.dir}`, "Questions", () => this.openFile(`${c.dir}/questions.md`, `${issue} questions`), t, true));
     if (c.failure) out.push(this.link(`f-${c.dir}`, "Failure", () => this.openFile(`${c.dir}/last-failure.txt`, `${issue} last failure`), t, true));
     for (const s of c.result?.scans ?? []) {
@@ -473,6 +512,112 @@ export default class CrewBoard extends View {
       .child(div().flex_1())
       .children(links)
       .child(div().w(28).text_color(t.dim).child(ago(h.ts)));
+  }
+
+  // ------------------------------------------------------------ child detail window
+  // Everything about one child, rendered: where it stands, the open question,
+  // reviewer verdicts, and its spec, reviews, scans and failures as markdown.
+  initDetail(cx) {
+    const p = props();
+    this.doc = null;
+    this.docs = [];
+    this.meta = null;
+    this.result = null;
+    this.reply = p.orchestrator ? makeReply(p.issue, `Reply to Claude about ${p.issue}...`) : null;
+    this.loadDetail(cx);
+    cx.timer.every(POLL_MS, (cx) => this.loadDetail(cx));
+  }
+
+  loadDetail(cx) {
+    cx.spawn(async (cx) => {
+      const dir = props().detail;
+      const read = (name) => readTextFile(`${dir}/${name}`).catch(() => null);
+      const metaText = await read("meta.json");
+      this.meta = metaText ? JSON.parse(metaText) : null;
+      const resultText = await read("result.json");
+      this.result = resultText ? JSON.parse(resultText) : null;
+      const wanted = [
+        ["questions.md", "Questions"], ["review-critic.md", "Critic review"], ["review-security.md", "Security review"],
+        ["review-qa.md", "QA review"], ["review-staff.md", "Staff review"], ["spec.md", "Spec"],
+        ["scan-critic.md", "Critic scan"], ["scan-security.md", "Security scan"], ["last-failure.txt", "Last failure"],
+      ];
+      const docs = [];
+      for (const [name, label] of wanted) {
+        const text = await read(name);
+        if (text && text.trim()) docs.push({ name, label, text });
+      }
+      this.docs = docs;
+      if (!this.doc || !docs.some((d) => d.name === this.doc)) this.doc = docs[0]?.name ?? null;
+      cx.notify();
+    });
+  }
+
+  renderDetail(cx) {
+    const t = theme(), p = props(), m = this.meta;
+    if (!m) return v_flex().size_full().bg(t.surface).p(16).text_color(t.muted).child("Loading...");
+    const c = { meta: m, result: this.result, questionTitle: "" };
+    const prog = progressOf(c, this.agentFor(m.issue));
+    const color = this.whoColor(prog.who, t);
+    const doc = this.docs.find((d) => d.name === this.doc);
+    const reviews = Object.entries(m.reviews ?? {});
+    const agent = this.agentFor(m.issue);
+
+    const tabs = h_flex().gap(4).flex_wrap().children(this.docs.map((d) =>
+      div().id(`doc-${d.name}`).px(10).py(4).rounded(6).text_size(12)
+        .bg(d.name === this.doc ? t.selected : t.surface)
+        .text_color(d.name === this.doc ? t.foreground : t.muted)
+        .hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => { this.doc = d.name; cx.notify(); })
+        .child(d.label)));
+
+    const body = !doc ? div().text_color(t.dim).child("Nothing written for this child yet.")
+      : /\.md$/.test(doc.name) ? TextView.markdown(`crew-doc-${p.detail}-${doc.name}`, doc.text)
+      : div().font_family("monospace").text_size(12).child(doc.text.length > 60000 ? doc.text.slice(-60000) : doc.text);
+
+    return v_flex().id("crew-detail").size_full().bg(t.surface).text_color(t.foreground).text_size(13)
+      // Title bar
+      .child(h_flex().px(16).h(44).flex_none().gap(10).items_center().border_b(1).border_color(t.border).bg(t.chrome)
+        .child(div().font_semibold().text_size(15).child(m.issue))
+        .child(div().text_color(t.dim).child(m.parent ? `in ${m.parent}` : ""))
+        .child(div().flex_1())
+        .child(this.pill(prog, t))
+        .child(div().id("crew-detail-close").px(6).text_color(t.muted).hover((s) => s.text_color(t.foreground))
+          .on_click((e, cx) => { cx.stop_propagation(); closeOverlay(p.overlay); }).child("Close")))
+      // Where it stands
+      .child(v_flex().px(16).py(12).gap(8).flex_none().border_b(1).border_color(t.border)
+        .child(h_flex().items_center().gap(12)
+          .child(this.track(prog, t))
+          .child(div().flex_1())
+          .when(Boolean(agent), (el) => el.child(this.link("crew-detail-term", "Open builder terminal", () => run("agent.focus", { terminal: agent.address }), t))))
+        .when(Boolean(m.stage_note), (el) => el.child(div().px(10).py(8).rounded(8).bg(t.raised)
+          .text_color(prog.mode === "waiting" ? color : t.foreground).child(m.stage_note)))
+        .when(reviews.length > 0, (el) => el.child(h_flex().gap(6).flex_wrap().children(reviews.map(([lens, v]) =>
+          this.count(`${lens}: ${v.verdict === "pass" ? "passed" : `${v.findings} to fix`}`, v.verdict === "pass" ? t.done : t.blocked, v.verdict !== "pass", t))))))
+      // Documents
+      .child(v_flex().flex_1().min_h(0)
+        .child(div().px(16).pt(10).pb(6).flex_none().child(tabs))
+        .child(div().id("crew-detail-body").flex_1().min_h(0).px(16).pb(16).overflow_y_scrollbar().child(body)))
+      // Reply
+      .child(this.detailReply(p, t));
+  }
+
+  detailReply(p, t) {
+    const st = this.reply;
+    if (!st) {
+      return div().px(16).py(10).flex_none().border_t(1).border_color(t.border).text_size(12).text_color(t.dim)
+        .child("To reply here, start the work from Claude Code in a Herdr tab.");
+    }
+    const about = p.parentKey ? `${p.parentKey} / ${p.issue}` : p.issue;
+    st.onSubmit = (cx) => sendReply(st, p.orchestrator, about, cx);
+    return v_flex().px(16).py(10).gap(4).flex_none().border_t(1).border_color(t.border).bg(t.chrome)
+      .child(h_flex().gap(8).items_center()
+        .child(Input.new(st.input).flex_1().min_w(0).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(13))
+        .child(h_flex().id("crew-detail-send").h(34).px(14).items_center().rounded(8)
+          .bg(st.text.trim() ? t.solid : t.raised).text_color(st.text.trim() ? t.solid_foreground : t.dim).cursor_pointer()
+          .on_click((_e, cx) => sendReply(st, p.orchestrator, about, cx)).child("Send")))
+      .child(h_flex().gap(10).text_size(11)
+        .child(this.link("crew-detail-claude", "Open Claude's terminal", () => run("agent.focus", { terminal: p.orchestrator }), t))
+        .child(div().text_color(t.dim).child(st.sent ? `Sent: ${st.sent}` : terminalsLive(p.orchestrator) ? "" : "Claude's terminal isn't running")));
   }
 
   // ------------------------------------------------------------ file viewer window
