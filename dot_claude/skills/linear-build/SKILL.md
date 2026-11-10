@@ -67,7 +67,9 @@ Post one comment on the parent issue, titled **Build decisions**, and keep updat
 
 Every decision on the list is yours or the user's. Builders never appear as a source.
 
-**When to pause.** If a planning decision contradicts the design or widens an issue's scope, post the comment, tell the user what you need, and stop until they answer. Otherwise do not pause. The user reviews all decisions at the end.
+**When to pause.** If a planning decision contradicts the design or widens an issue's scope, post the comment, ask the user with `crew ask` (see "Asking the user"), and stop that child until they answer. Otherwise do not pause. The user reviews all decisions at the end.
+
+**Asking the user.** Every question for the user goes through `crew ask <ISSUE> --question "<one sentence>" --option "<Label>: <what happens if they pick it>" ... --recommend <N>`, with two to four options and the 1-based number of your recommendation. The board shows the question as buttons and marks the parent as waiting on the user. When they pick, `crew answer` records the choice and clears the parent's banner. If you run in Herdr, the choice also reaches you as a `[crew board, ...] My decision: ...` message. Otherwise read it from the child's `meta.json` (`.answer.choice`) before you continue. Record the decision on Linear as `[escalation]`, citing the user's choice.
 
 ## 4. Build
 
@@ -97,7 +99,7 @@ The `crew scan` runs use the config's `scan_builder` and cost no Anthropic token
 
 **Board updates during review.** Before launching reviewers on a child, run `crew stage <ISSUE> reviewing --note "Claude: <reviewers> reviewing"`. After each reviewer returns, write its full report to a file and run `crew review <ISSUE> <lens> pass|fix-required <number of blocking plus should-fix findings> --file <report.md>`. The board renders that report for the user.
 
-**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, report them to the user rather than looping.
+**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, don't loop: `crew ask` the user, offering at least a second fix round and you fixing it yourself, plus any spec change that would make the problem go away.
 
 **Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
 

@@ -354,7 +354,7 @@ export default class CrewBoard extends View {
         .child(div().text_color(t.muted).child(
           !kids.length ? "No children in flight" : atPR === kids.length ? "All ready for your review" : `${atPR} of ${kids.length} ready for review · ${steps}/${total} steps`))
         .when(counts.length > 0, (el) => el.child(h_flex().flex_wrap().gap(4).children(counts))))
-      .when(g.parent?.waiting === "you", (el) => el.child(this.yourTurn(g.parent, id, t)))
+      .when(g.parent?.waiting === "you", (el) => el.child(this.yourTurn(g.parent, id, t, kids.find((c) => c.meta.stage === "escalated"))))
       .when(!folded, (el) => el.child(this.replyBox(g, id, t)))
       .when(!folded && kids.length > 0, (el) => el
         .child(h_flex().px(14).pb(2).text_color(t.dim).text_size(10)
@@ -369,10 +369,13 @@ export default class CrewBoard extends View {
       : div().px(6).py(1).rounded(9).border(1).border_color(color).text_color(color).text_size(10).child(text);
   }
 
-  yourTurn(parent, id, t) {
+  yourTurn(parent, id, t, child) {
     return h_flex().id(`${id}-turn`).mx(14).mb(10).gap(8).items_start().px(10).py(8).rounded(8).bg(t.raised).min_w(0)
+      .when(Boolean(child), (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).on_click(() => this.openDetail(child)))
       .child(div().mt(4).w(8).h(8).rounded(4).bg(t.blocked).flex_none())
-      .child(div().flex_1().min_w(0).child(parent.note || "Your turn"))
+      .child(v_flex().flex_1().min_w(0).gap(4)
+        .child(div().child(parent.note || "Your turn"))
+        .when(Boolean(child), (el) => el.child(div().text_color(t.accent).text_size(11).child("Decide →"))))
       .when(Boolean(parent.link), (el) => el.child(this.link(`${id}-link`, "Open", () => exec("open", [parent.link]), t)));
   }
 
@@ -589,7 +592,11 @@ export default class CrewBoard extends View {
           .child(this.track(prog, t))
           .child(div().flex_1())
           .when(Boolean(agent), (el) => el.child(this.link("crew-detail-term", "Open builder terminal", () => run("agent.focus", { terminal: agent.address }), t))))
-        .when(Boolean(m.stage_note), (el) => el.child(div().px(10).py(8).rounded(8).bg(t.raised)
+        .when(Boolean(m.ask) && m.stage === "escalated", (el) => el.child(this.decision(m, p, t)))
+        .when(Boolean(m.answer) && m.stage !== "escalated", (el) => el.child(h_flex().gap(8).items_center()
+          .child(this.count(`You chose: ${m.answer.choice}`, t.done, true, t))
+          .child(div().text_color(t.dim).text_size(12).child(ago(m.answer.ts) === "now" ? "just now" : `${ago(m.answer.ts)} ago`))))
+        .when(Boolean(m.stage_note) && !(m.ask && m.stage === "escalated"), (el) => el.child(div().px(10).py(8).rounded(8).bg(t.raised)
           .text_color(prog.mode === "waiting" ? color : t.foreground).child(m.stage_note)))
         .when(reviews.length > 0, (el) => el.child(h_flex().gap(6).flex_wrap().children(reviews.map(([lens, v]) =>
           this.count(`${lens}: ${v.verdict === "pass" ? "passed" : `${v.findings} to fix`}`, v.verdict === "pass" ? t.done : t.blocked, v.verdict !== "pass", t))))))
@@ -599,6 +606,50 @@ export default class CrewBoard extends View {
         .child(div().id("crew-detail-body").flex_1().min_h(0).px(16).pb(16).overflow_y_scrollbar().child(body)))
       // Reply
       .child(this.detailReply(p, t));
+  }
+
+  // An open decision: the question, then one button per option. The
+  // recommended option comes first and is drawn as the primary button.
+  decision(m, p, t) {
+    const ask = m.ask;
+    const rec = (ask.recommend ?? 0) - 1;
+    const order = ask.options.map((o, i) => ({ o, i })).sort((a, b) => (b.i === rec) - (a.i === rec));
+    return v_flex().gap(10).px(12).py(12).rounded(10).bg(t.raised).border(1).border_color(t.blocked)
+      .child(h_flex().gap(8).items_start()
+        .child(div().mt(5).w(8).h(8).rounded(4).bg(t.blocked).flex_none())
+        .child(div().flex_1().min_w(0).font_semibold().child(ask.question)))
+      .child(v_flex().gap(6).children(order.map(({ o, i }) => {
+        const primary = i === rec;
+        const locked = this.choosing === ask.ts;
+        return v_flex().id(`opt-${i}`).px(12).py(9).gap(2).rounded(8).cursor_pointer().opacity(locked ? 0.5 : 1)
+          .bg(primary ? t.solid : t.surface).border(1).border_color(primary ? t.solid : t.border)
+          .hover((s) => s.opacity(0.9))
+          .on_click((_e, cx) => this.choose(m, p, o, cx))
+          .child(h_flex().gap(8).items_center()
+            .child(div().font_semibold().text_color(primary ? t.solid_foreground : t.foreground).child(o.label))
+            .when(primary, (el) => el.child(div().px(6).rounded(8).bg(t.solid_foreground).text_color(t.solid).text_size(10).child("Recommended"))))
+          .when(Boolean(o.detail), (el) => el.child(div().text_size(12).text_color(primary ? t.solid_foreground : t.muted).child(o.detail)));
+      })))
+      .child(div().text_size(11).text_color(t.dim).child("Or type a different answer below."));
+  }
+
+  choose(m, p, o, cx) {
+    // One choice per question: stay locked until the recorded answer loads.
+    if (this.choosing === m.ask.ts) return;
+    this.choosing = m.ask.ts;
+    exec(CREW(), ["answer", m.issue, o.label], { cwd: m.worktree, timeout: 15000 })
+      .then((r) => {
+        if (r.code !== 0) notify({ title: "Could not record your choice", body: (r.stderr || "").slice(0, 200), level: "error" });
+      })
+      .catch(() => notify({ title: "Could not record your choice", body: "crew answer failed", level: "error" }));
+    if (p.orchestrator) {
+      const about = p.parentKey ? `${p.parentKey} / ${p.issue}` : p.issue;
+      hc(["send", p.orchestrator, `[crew board, ${about}] My decision: ${o.label}.${o.detail ? ` ${o.detail}` : ""}`])
+        .catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
+    }
+    notify({ title: `${m.issue}: ${o.label}`, body: p.orchestrator ? "Sent to Claude." : "Recorded. Claude picks it up from crew's files.", level: "success" });
+    this.loadDetail(cx);
+    cx.notify();
   }
 
   detailReply(p, t) {
