@@ -112,6 +112,7 @@ export default class CrewBoard extends View {
   init(_props, cx) {
     if (props()?.file) return this.initViewer(cx);
     if (props()?.detail) return this.initDetail(cx);
+    if (props()?.decisions) return this.initDecisions(cx);
     this.inputs = new Map();
     this.children_ = [];
     this.parents = new Map();
@@ -128,9 +129,23 @@ export default class CrewBoard extends View {
       for (;;) {
         const c = await nextCommand();
         if (c === "next") this.openMostUrgent();
+        if (c === "decisions") this.openTopDecisions();
         cx.notify();
       }
     });
+  }
+
+  // `crew-board.decisions` opens the decisions of the most urgent parent.
+  openTopDecisions() {
+    const groups = new Map();
+    for (const c of this.children_) {
+      const key = `${c.meta.repo}|${c.meta.parent ?? ""}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    const top = [...groups.entries()].map(([key, kids]) => ({ key, kids, parent: this.parents.get(key) ?? null }))
+      .sort((a, b) => this.urgency(b) - this.urgency(a))[0];
+    if (top) this.openDecisions(top, top.kids);
   }
 
   openMostUrgent() {
@@ -277,6 +292,7 @@ export default class CrewBoard extends View {
   render(cx) {
     if (props()?.file) return this.renderViewer(cx);
     if (props()?.detail) return this.renderDetail(cx);
+    if (props()?.decisions) return this.renderDecisions(cx);
     const t = theme();
     const groups = new Map();
     for (const c of this.children_) {
@@ -391,6 +407,7 @@ export default class CrewBoard extends View {
           !kids.length ? "No children in flight" : atPR === kids.length ? "All ready for your review" : `${atPR} of ${kids.length} ready for review · ${steps}/${total} steps`))
         .when(counts.length > 0, (el) => el.child(h_flex().flex_wrap().gap(4).children(counts))))
       .child(this.claudeLine(g, prog, id, t))
+      .child(this.decisionsSummary(g, kids, id, t))
       .when(g.parent?.waiting === "you", (el) => el.child(this.yourTurn(g.parent, id, t, kids.find((c) => c.meta.stage === "escalated"))))
       .when(!folded, (el) => el.child(this.replyBox(g, id, t)))
       .when(!folded && kids.length > 0, (el) => el
@@ -398,6 +415,44 @@ export default class CrewBoard extends View {
           .child(div().w(KEY))
           .child(h_flex().w(COL * STEPS.length).children(STEPS.map((s) => h_flex().w(COL).justify_center().child(s)))))
         .children(prog.map(({ c, p }, i) => this.childRow(c, p, i, t))));
+  }
+
+  // All decisions for a parent: its own plus each child's, newest first.
+  decisionsOf(g, kids) {
+    const out = [];
+    for (const d of g.parent?.decisions ?? []) out.push({ d, issue: null, worktree: null });
+    for (const c of kids) for (const d of c.meta.decisions ?? []) out.push({ d, issue: c.meta.issue, worktree: c.meta.worktree, dir: c.dir });
+    return out.sort((a, b) => (a.d.ts < b.d.ts ? 1 : -1));
+  }
+
+  decisionsSummary(g, kids, id, t) {
+    const all = this.decisionsOf(g, kids);
+    if (!all.length) return div();
+    const changeable = all.filter(({ d }) => d.auto && !d.overridden).length;
+    const commented = all.filter(({ d }) => (d.comments ?? []).length > 0).length;
+    const recent = all.slice(0, 3);
+    return v_flex().id(`${id}-dec`).mx(14).mb(10).gap(6)
+      .child(h_flex().gap(8).items_center()
+        .child(div().font_semibold().child("Decisions"))
+        .child(div().text_color(t.dim).child(String(all.length)))
+        .when(changeable > 0, (el) => el.child(this.count(`${changeable} you can change`, t.accent, false, t)))
+        .when(commented > 0, (el) => el.child(div().text_color(t.dim).text_size(11).child(`${commented} discussed`)))
+        .child(div().flex_1())
+        .child(this.link(`${id}-dec-all`, "All decisions →", () => this.openDecisions(g, kids), t, true)))
+      .children(recent.map(({ d, issue }) =>
+        h_flex().id(`${id}-dec-${d.id}`).gap(8).items_start().px(8).py(6).rounded(6).bg(t.background).min_w(0)
+          .cursor_pointer().hover((s) => s.bg(t.hover))
+          .on_click(() => this.openDecisions(g, kids, d.id))
+          .child(div().w(54).flex_none().text_size(11).text_color(t.dim).child(issue ?? "parent"))
+          .child(div().flex_1().min_w(0).text_size(12).child(d.what))
+          .when((d.comments ?? []).length > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`${d.comments.length} 💬`)))));
+  }
+
+  openDecisions(g, kids, focus) {
+    const [repo, parentKey] = g.key.split("|");
+    openOverlay({ mod: "crew-board", kind: "window", key: `crew-decisions-${parentKey}`, width: 760, height: 700,
+      props: { decisions: parentKey || "(no parent)", repo, focus: focus ?? null,
+               orchestrator: g.parent?.orchestrator ?? null, dirs: kids.map((c) => c.dir) } });
   }
 
   // One line on what the orchestrating Claude is doing, with a nudge when
@@ -543,8 +598,8 @@ export default class CrewBoard extends View {
         .when(Boolean(c.result?.risk?.security), (r) => r.child(
           div().flex_none().px(5).rounded(4).bg(t.raised).text_color(t.blocked).text_size(10).child("security")))
         .child(div().flex_1().min_w(0).text_color(whyColor).child(why))))
-      .when((c.meta.decided ?? []).some((d) => !d.overridden), (el) => el.child(h_flex().pl(KEY).child(
-        this.count(`${(c.meta.decided ?? []).filter((d) => !d.overridden).length} decided for you · review`, t.accent, false, t))))
+      .when((c.meta.decisions ?? []).some((d) => d.auto && !d.overridden), (el) => el.child(h_flex().pl(KEY).child(
+        this.count(`${(c.meta.decisions ?? []).filter((d) => d.auto && !d.overridden).length} decided for you · review`, t.accent, false, t))))
       .when(links.length > 0, (el) => el.child(h_flex().pl(KEY).gap(12).children(links)));
   }
 
@@ -616,6 +671,146 @@ export default class CrewBoard extends View {
       .child(div().flex_1())
       .children(links)
       .child(div().w(28).text_color(t.dim).child(ago(h.ts)));
+  }
+
+  // ------------------------------------------------------------ decisions window
+  // Every decision for one parent, grouped by child, each with its reasoning,
+  // the choices Claude didn't take, and a comment thread with Claude.
+  initDecisions(cx) {
+    const p = props();
+    this.decGroups = [];
+    this.target = p.focus ?? null;
+    this.composer = makeReply(p.decisions, "Comment on the selected decision...");
+    this.loadDecisions(cx);
+    cx.timer.every(POLL_MS, (cx) => this.loadDecisions(cx));
+  }
+
+  loadDecisions(cx) {
+    cx.spawn(async (cx) => {
+      const p = props();
+      const groups = [];
+      const repoName = p.repo.split("/").pop();
+      const parentText = await readTextFile(`${STATE()}/parents/${repoName}/${p.decisions}.json`).catch(() => null);
+      const parent = parentText ? JSON.parse(parentText) : null;
+      if (parent?.decisions?.length) groups.push({ issue: null, worktree: null, decisions: parent.decisions });
+      for (const dir of p.dirs ?? []) {
+        const text = await readTextFile(`${dir}/meta.json`).catch(() => null);
+        if (!text) continue;
+        const m = JSON.parse(text);
+        if (m.decisions?.length) groups.push({ issue: m.issue, worktree: m.worktree, meta: m, decisions: m.decisions });
+      }
+      this.decGroups = groups;
+      cx.notify();
+    });
+  }
+
+  renderDecisions(cx) {
+    const t = theme(), p = props();
+    const total = this.decGroups.reduce((n, g) => n + g.decisions.length, 0);
+    const target = this.decGroups.flatMap((g) => g.decisions.map((d) => ({ d, g }))).find(({ d }) => d.id === this.target);
+    const body = !this.decGroups.length
+      ? div().p(16).text_color(t.dim).child("No decisions recorded yet.")
+      : v_flex().gap(16).children(this.decGroups.map((g) => v_flex().gap(8)
+          .child(h_flex().gap(8).items_center()
+            .child(div().font_semibold().text_size(14).child(g.issue ?? `${p.decisions} (parent)`))
+            .child(div().text_color(t.dim).child(String(g.decisions.length))))
+          .children([...g.decisions].reverse().map((d) => this.decisionCard(d, g, p, t)))));
+
+    return v_flex().id("crew-decisions").size_full().bg(t.surface).text_color(t.foreground).text_size(13)
+      .child(h_flex().px(16).h(44).flex_none().gap(10).items_center().border_b(1).border_color(t.border).bg(t.chrome)
+        .child(div().font_semibold().text_size(15).child(`Decisions · ${p.decisions}`))
+        .child(div().text_color(t.dim).child(`${total} recorded`))
+        .child(div().flex_1())
+        .child(div().id("crew-dec-close").px(6).text_color(t.muted).hover((s) => s.text_color(t.foreground))
+          .on_click((e, cx) => { cx.stop_propagation(); closeOverlay(p.overlay); }).child("Close")))
+      .child(div().id("crew-dec-body").flex_1().min_h(0).p(16).overflow_y_scrollbar().child(body))
+      .child(this.decisionComposer(target, p, t));
+  }
+
+  decisionCard(d, g, p, t) {
+    const SOURCE = { plan: "Plan", ratified: "Ratified", escalation: "Decided for you", design: "Design" };
+    const selected = this.target === d.id;
+    const changed = Boolean(d.overridden);
+    return v_flex().id(`dec-${d.id}`).gap(6).px(12).py(10).rounded(10).bg(t.raised)
+      .border(1).border_color(selected ? t.accent : d.auto && !changed ? t.accent : t.border)
+      .child(h_flex().gap(8).items_center()
+        .child(this.count(SOURCE[d.source] ?? d.source, d.auto && !changed ? t.accent : t.muted, d.auto && !changed, t))
+        .when(changed, (el) => el.child(this.count("You changed this", t.done, true, t)))
+        .child(div().text_color(t.dim).text_size(11).child(d.id))
+        .child(div().flex_1())
+        .child(div().text_color(t.dim).text_size(11).child(d.ts ? `${ago(d.ts)} ago` : "")))
+      .child(div().child(d.what))
+      .when(Boolean(d.why), (el) => el.child(div().text_color(t.muted).text_size(12).child(d.why)))
+      .when(changed, (el) => el.child(div().text_color(t.muted).text_size(12).child(`You changed "${d.choice}" to "${d.overridden}".`)))
+      .when(d.auto && !changed && (d.options ?? []).length > 1, (el) => el.child(h_flex().gap(6).flex_wrap()
+        .children(d.options.filter((o) => o.label !== d.choice).map((o, j) =>
+          div().id(`chg-${d.id}-${j}`).px(10).py(5).rounded(7).border(1).border_color(t.border).bg(t.surface).cursor_pointer()
+            .hover((s) => s.bg(t.hover)).text_size(12)
+            .on_click((_e, cx) => this.changeDecision(d, g, p, o, cx))
+            .child(`Change to: ${o.label}`)))))
+      .when(!d.auto && (d.options ?? []).length > 0, (el) => el.child(div().text_color(t.dim).text_size(12)
+        .child(`Alternatives: ${d.options.map((o) => o.label).join("; ")}`)))
+      .when((d.comments ?? []).length > 0, (el) => el.child(v_flex().gap(4).pl(10).border_l(2).border_color(t.border)
+        .children(d.comments.map((c) => v_flex().gap(1)
+          .child(h_flex().gap(6).text_size(11)
+            .child(div().font_semibold().text_color(c.by === "user" ? t.foreground : t.accent).child(c.by === "user" ? "You" : "Claude"))
+            .child(div().text_color(t.dim).child(`${ago(c.ts)} ago`)))
+          .child(div().text_size(12).child(c.text))))))
+      .child(h_flex().gap(12)
+        .child(this.link(`cmt-${d.id}`, selected ? "Commenting…" : "Comment", () => { this.target = d.id; this.composer.input.focus(); }, t, true)));
+  }
+
+  decisionComposer(target, p, t) {
+    const st = this.composer;
+    if (!target) {
+      return div().px(16).py(12).flex_none().border_t(1).border_color(t.border).bg(t.chrome).text_size(12).text_color(t.dim)
+        .child("Pick Comment on a decision to discuss it with Claude.");
+    }
+    const send = (cx) => this.commentOn(target.d, target.g, p, cx);
+    st.onSubmit = send;
+    return v_flex().px(16).py(10).gap(4).flex_none().border_t(1).border_color(t.border).bg(t.chrome)
+      .child(h_flex().gap(6).text_size(11).text_color(t.dim)
+        .child(div().child(`Commenting on ${target.d.id}:`))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(target.d.what))
+        .child(div().id("cmt-cancel").text_color(t.dim).hover((s) => s.text_color(t.foreground))
+          .on_click((_e, cx) => { this.target = null; cx.notify(); }).child("✕")))
+      .child(h_flex().gap(8).items_center()
+        .child(Input.new(st.input).flex_1().min_w(0).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(13))
+        .child(h_flex().id("cmt-send").h(34).px(14).items_center().rounded(8)
+          .bg(st.text.trim() ? t.solid : t.raised).text_color(st.text.trim() ? t.solid_foreground : t.dim).cursor_pointer()
+          .on_click((_e, cx) => send(cx)).child("Send")))
+      .child(div().text_size(11).text_color(t.dim)
+        .child(p.orchestrator ? "Claude gets your comment, acts on it, and replies here." : "Saved with the decision; Claude reads it from crew's files."));
+  }
+
+  commentOn(d, g, p, cx) {
+    const st = this.composer, text = st.text.trim();
+    if (!text) return;
+    exec(CREW(), ["comment", d.id, "--text", text, "--by", "user"], { cwd: g.worktree ?? p.repo, timeout: 15000 })
+      .then((r) => { if (r.code !== 0) notify({ title: "Comment not saved", body: (r.stderr || "").slice(0, 200), level: "error" }); })
+      .catch(() => notify({ title: "Comment not saved", body: "crew comment failed", level: "error" }));
+    if (p.orchestrator) {
+      const about = g.issue ? `${p.decisions} / ${g.issue}` : p.decisions;
+      hc(["send", p.orchestrator, `[crew board, ${about}] Comment on decision ${d.id} ("${d.what}"): ${text} Act on it if needed, then reply with crew comment ${d.id} --by claude --text "...".`])
+        .catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
+    }
+    st.text = ""; st.input.set_value("");
+    this.loadDecisions(cx);
+    cx.notify();
+  }
+
+  changeDecision(d, g, p, o, cx) {
+    const lock = `${d.id}|${o.label}`;
+    if (this.choosing === lock) return;
+    this.choosing = lock;
+    exec(CREW(), ["answer", g.issue, o.label], { cwd: g.worktree, timeout: 15000 })
+      .catch(() => notify({ title: "Could not record the change", body: "crew answer failed", level: "error" }));
+    if (p.orchestrator) {
+      hc(["send", p.orchestrator, `[crew board, ${p.decisions} / ${g.issue}] I'm changing your decision ${d.id} ("${d.question ?? d.what}") from "${d.choice}" to "${o.label}".${o.detail ? ` ${o.detail}` : ""} Redo the affected work.`])
+        .catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
+    }
+    notify({ title: `${g.issue}: changed to ${o.label}`, body: p.orchestrator ? "Sent to Claude." : "Recorded.", level: "success" });
+    this.loadDecisions(cx);
   }
 
   // ------------------------------------------------------------ child detail window
@@ -694,7 +889,12 @@ export default class CrewBoard extends View {
           .child(div().flex_1())
           .when(Boolean(agent), (el) => el.child(this.link("crew-detail-term", "Open builder terminal", () => run("agent.focus", { terminal: agent.address }), t))))
         .when(Boolean(m.ask) && m.stage === "escalated", (el) => el.child(this.decision(m, p, t)))
-        .children((m.decided ?? []).map((d, i) => this.decidedForYou(m, p, d, i, t)))
+        .when((m.decisions ?? []).length > 0, (el) => el.child(h_flex().gap(8).items_center()
+          .child(this.count(`${m.decisions.length} decision${m.decisions.length === 1 ? "" : "s"}`, t.accent, false, t))
+          .when(m.decisions.some((d) => d.auto && !d.overridden), (e) => e.child(div().text_color(t.accent).text_size(12).child("some decided for you")))
+          .child(this.link("crew-detail-dec", "Open decisions →", () => openOverlay({ mod: "crew-board", kind: "window",
+            key: `crew-decisions-${p.parentKey || m.issue}`, width: 760, height: 700,
+            props: { decisions: p.parentKey || m.issue, repo: m.repo, focus: null, orchestrator: p.orchestrator, dirs: [props().detail] } }), t, true))))
         .when(Boolean(m.answer) && m.stage !== "escalated", (el) => el.child(h_flex().gap(8).items_center()
           .child(this.count(`You chose: ${m.answer.choice}`, t.done, true, t))
           .child(div().text_color(t.dim).text_size(12).child(ago(m.answer.ts) === "now" ? "just now" : `${ago(m.answer.ts)} ago`))))

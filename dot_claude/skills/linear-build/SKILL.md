@@ -69,6 +69,8 @@ Post one comment on the parent issue, titled **Build decisions**, and keep updat
 
 Every decision on the list is yours or the user's. Builders never appear as a source.
 
+**Log every decision with `crew` too.** The Linear comment is the record your peers read. The user reviews decisions on the board in Herdr, which only sees what `crew` records. So each time you add a line to the Build decisions comment, also run `crew decision <ISSUE> --source plan|ratified|escalation|design --what "<the decision, one sentence>" --why "<the reason>"`. Use `--parent <PARENT>` in place of `<ISSUE>` for a decision about the whole parent, and add `--option "<Label>: <detail>"` for alternatives you weighed. `crew ask --auto` logs its own decision, so don't log those twice.
+
 **Never pause.** Even a planning decision that contradicts the design or widens an issue's scope does not stop the run. Decide it with `crew ask --auto` (see "Deciding for the user"), record it on Linear, and keep going. The user reviews every decision in the morning and can change any of them.
 
 **Deciding for the user.** Every decision that would otherwise need the user goes through `crew ask <ISSUE> --question "<one sentence>" --option "<Label>: <what happens if they pick it>" ... --recommend <N> --auto`, with two to four options and the 1-based number of your recommendation. `--auto` takes your recommendation immediately, so the child keeps moving. The board shows the decision as "Decided for you", with buttons to change it. Act on your recommendation straight away, and record it on Linear as `[escalation]` with the alternatives. If the user changes it later, the change reaches you as a `[crew board, ...] I'm changing your decision ...` message, or as `.decided[].overridden` in the child's `meta.json`. Redo whatever the change affects.
@@ -105,7 +107,7 @@ The `crew scan` runs use the config's `scan_builder` and cost no Anthropic token
 
 **On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, don't loop. Run `crew ask --auto`, offering at least a second fix round and you fixing it yourself, plus any spec change that would make the problem go away, and carry out your recommendation.
 
-**Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
+**Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`, with `crew decision <ISSUE> --source ratified`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
 
 ## 6. Open draft PRs
 
@@ -129,6 +131,8 @@ Tell the user, in a few lines:
 ## Messages from the board
 
 When you run in a Herdr terminal, `crew parent` records that terminal as the parent's orchestrator, and the crew board in the Herdr app shows a reply box on the parent's card. Whatever the user types there reaches you as a message starting with `[crew board, <PARENT>]`. Treat it as the user speaking about that parent issue: an answer to an escalation, a correction or a new instruction. When the reply settles an escalated child, record the decision on Linear, then move the child on with `crew stage`, `crew fix` or your own work, and clear the banner with `crew parent <PARENT> --waiting none`.
+
+**Comments on decisions.** The board's decisions window lets the user comment on any decision. A comment reaches you as `[crew board, ...] Comment on decision <ID> ("..."): ...`, and it is also saved in the decision's thread. Act on it if it asks for a change, logging any new decision with `crew decision`. Then always reply in the thread with `crew comment <ID> --by claude --text "<what you did or why you kept it>"`, so the user sees your answer next to their comment. Keep running unattended while you do; a comment is never a reason to stop.
 
 If the session has no memory of the parent, rebuild it from `crew`'s files before acting. `~/.local/state/crew/parents/<repo>/<PARENT>.json` holds the parent's title and the open question. Each child's `~/.local/state/crew/wt/<repo>/<CHILD>/.crew/` holds its spec, meta (stage, reviews, attempts), result, questions and scans, and `crew status <CHILD>` prints the latest result.
 

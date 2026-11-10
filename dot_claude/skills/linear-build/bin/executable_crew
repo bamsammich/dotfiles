@@ -15,6 +15,9 @@
 #                                                         a decision with choices; --auto takes the recommendation now
 #                                                         and leaves it on the board for the user to change later
 #   crew answer ISSUE LABEL [--note TEXT]                 record the user's choice (the board calls this)
+#   crew decision ISSUE|--parent KEY --what TEXT [--why TEXT] [--source plan|ratified|escalation|design]
+#                 [--option "LABEL: DETAIL"]...           log a decision so the board can show it; prints its id
+#   crew comment  ID --text TEXT [--by user|claude]       add to a decision's comment thread
 #   crew review ISSUE LENS pass|fix-required [FINDINGS] [--file REPORT.md]
 #                                                         record one Opus reviewer's verdict and report
 #   crew path   ISSUE                                     print worktree path
@@ -629,6 +632,8 @@ cmd_ask() {
     local pick; pick="$(jq -r --argjson i "$((rec - 1))" '.[$i].label' <<<"$oj")"
     meta_set "$wt" ".answer = {choice: $(jq -n --arg c "$pick" '$c'), by: \"claude\", ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"} | .decided = ((.decided // []) + [{question: .ask.question, options: .ask.options, choice: $(jq -n --arg c "$pick" '$c'), ts: .answer.ts}])"
     history_add "$wt" decided "$(jq -cn --arg q "$q" --arg c "$pick" '{question:$q, choice:$c, by:"claude"}')"
+    add_decision "$wt/.crew/meta.json" "$issue" "$(jq -cn --arg q "$q" --arg c "$pick" --argjson o "$oj" \
+      '{what: "\($q) Chose: \($c).", question: $q, choice: $c, options: $o, source: "escalation", auto: true}')" >/dev/null
     say "decided $issue for the user: $pick (they can change it on the board)"
     return 0
   fi
@@ -643,7 +648,9 @@ cmd_answer() {
   local c; c="$(jq -n --arg c "$choice" '$c')"
   # An answer that changes a choice Claude made for the user is an override.
   meta_set "$wt" ".answer = {choice: $c, note: $(jq -n --arg n "$note" '$n'), by: \"user\", ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}
-    | .decided = ((.decided // []) | if length > 0 and .[-1].choice != $c and .[-1].overridden == null then .[-1].overridden = $c else . end)"
+    | .decided = ((.decided // []) | if length > 0 and .[-1].choice != $c and .[-1].overridden == null then .[-1].overridden = $c else . end)
+    | .decisions = ((.decisions // []) | (map(.auto == true and .overridden == null) | rindex(true)) as \$i
+        | if \$i != null and .[\$i].choice != $c then .[\$i].overridden = $c else . end)"
   history_add "$wt" answer "$(jq -cn --arg c "$choice" --arg n "$note" '{choice:$c, note:$n}')"
   set_stage "$wt" reviewing "You chose \"$choice\"; Claude is acting on it"
   # Clear the parent's banner once none of its children still waits on the user.
@@ -658,6 +665,57 @@ cmd_answer() {
 
 # What the orchestrator in terminal T still owes: children of its parents that
 # wait on Claude, and whether anything is in flight. Prints JSON.
+# ---- decisions ---------------------------------------------------------------
+# A decision lives in the child's meta.json (or, for --parent, the parent's
+# file) under .decisions, with an id like DEMO-12.d3 and a comment thread.
+decision_file() { # decision_file KEY: print the file holding KEY's decisions
+  local key; key="$(upper "$1")"
+  local wt; wt="$(wt_path "$key")"
+  if [ -f "$wt/.crew/meta.json" ]; then echo "$wt/.crew/meta.json"; return; fi
+  local pf="$STATE/parents/$(repo_name)/$key.json"
+  [ -f "$pf" ] || die "no child worktree or parent named $key in $(repo_name)"
+  echo "$pf"
+}
+
+add_decision() { # add_decision FILE KEY JSON: append, print the new id
+  local file="$1" key="$2" entry="$3" n id
+  n="$(jq '(.decisions // []) | length' "$file")"; id="$key.d$((n + 1))"
+  jq --argjson e "$entry" --arg id "$id" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '.decisions = ((.decisions // []) + [{id: $id, ts: $ts, by: "claude", comments: []} + $e])' "$file" >"$file.tmp" && mv "$file.tmp" "$file"
+  echo "$id"
+}
+
+cmd_decision() {
+  local key="" what="" why="" source="plan" opts=() file oj entry id
+  while [ $# -gt 0 ]; do case "$1" in
+    --parent) key="$(upper "$2")"; shift 2 ;; --what) what="$2"; shift 2 ;; --why) why="$2"; shift 2 ;;
+    --source) source="$2"; shift 2 ;; --option) opts+=("$2"); shift 2 ;;
+    -*) die "unknown arg $1" ;; *) key="$(upper "$1")"; shift ;; esac; done
+  [ -n "$key" ] && [ -n "$what" ] || die "usage: crew decision ISSUE|--parent KEY --what TEXT"
+  file="$(decision_file "$key")"
+  oj='[]'
+  if [ "${#opts[@]}" -gt 0 ]; then
+    oj="$(printf '%s\n' "${opts[@]}" | jq -R 'capture("^(?<label>[^:]+)(:\\s*(?<detail>.*))?$") | {label: (.label|gsub("^\\s+|\\s+$";"")), detail: (.detail // "")}' | jq -s .)"
+  fi
+  entry="$(jq -cn --arg w "$what" --arg y "$why" --arg s "$source" --argjson o "$oj" '{what: $w, why: $y, source: $s, options: $o}')"
+  id="$(add_decision "$file" "$key" "$entry")"
+  mkdir -p "$STATE"; jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg id "$id" --arg k "$key" --arg r "$(repo_name)" --arg w "$what" --arg s "$source" \
+    '{ts:$ts, event:"decision", id:$id, issue:$k, repo:$r, what:$w, source:$s}' >>"$HISTORY"
+  echo "$id"
+}
+
+cmd_comment() {
+  local id="${1:?ID}" text="" by="user" key file; shift
+  while [ $# -gt 0 ]; do case "$1" in --text) text="$2"; shift 2 ;; --by) by="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+  [ -n "$text" ] || die "pass --text"
+  key="${id%.d*}"; file="$(decision_file "$key")"
+  jq -e --arg id "$id" 'any(.decisions[]?; .id == $id)' "$file" >/dev/null || die "no decision $id"
+  jq --arg id "$id" --arg t "$text" --arg by "$by" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '.decisions |= map(if .id == $id then .comments += [{by: $by, text: $t, ts: $ts}] else . end)' "$file" >"$file.tmp" && mv "$file.tmp" "$file"
+  jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg id "$id" --arg by "$by" --arg t "$text" '{ts:$ts, event:"comment", id:$id, by:$by, text:$t}' >>"$HISTORY"
+  say "comment on $id by $by"
+}
+
 cmd_owed() {
   local term="${1:-${HC_TERMINAL_ID:-}}"; [ -n "$term" ] || die "usage: crew owed TERMINAL"
   local parents; parents="$(jq -s --arg t "$term" '[.[] | select(.orchestrator == $t) | {key, repo}]' "$STATE"/parents/*/*.json 2>/dev/null || echo '[]')"
@@ -724,6 +782,8 @@ case "$sub" in
   parent) cmd_parent "$@" ;;
   ask) cmd_ask "$@" ;;
   owed) cmd_owed "$@" ;;
+  decision) cmd_decision "$@" ;;
+  comment) cmd_comment "$@" ;;
   answer) cmd_answer "$@" ;;
   remove) cmd_remove "${1:?ISSUE}" ;;
   _build) cmd__build "$@" ;;
