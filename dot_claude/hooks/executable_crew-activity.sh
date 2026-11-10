@@ -5,6 +5,9 @@
 #    the orchestrating Claude as an agent: working, idle or blocked.
 # 2. Writes ~/.local/state/crew/orchestrators/<terminal>.json with what Claude
 #    is doing now and which subagents are out, for the crew board.
+# 3. On stop, keeps an orchestrator working: if children of its parents wait on
+#    Claude and nothing is in flight, the stop is blocked with what's left.
+#    After three blocks with no progress it lets Claude stop and marks it stuck.
 [ -n "${HC_TERMINAL_ID:-}" ] || exit 0
 event="${1:-}"
 payload="$(cat)"
@@ -43,8 +46,36 @@ elif [ "$event" = stop ] || [ "$event" = prompt ]; then
 fi
 jq -n --argjson c "$cur" --argjson p "${payload:-{\}}" --arg now "$now" --arg state "$state" --arg doing "$doing" \
   --arg term "$HC_TERMINAL_ID" --arg cwd "$PWD" \
-  "\$c | {terminal: \$term, cwd: \$cwd, state: \$state, doing: \$doing, ts: \$now, agents: ($agents_js)}" \
+  "\$c + {terminal: \$term, cwd: \$cwd, state: \$state, doing: \$doing, ts: \$now, agents: ($agents_js)}" \
   >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+
+# ---- stop guard and last message
+if [ "$event" = stop ]; then
+  last="$(jq -r '.last_assistant_message // ""' <<<"$payload" 2>/dev/null | tail -c 1500)"
+  crew="$HOME/.claude/skills/linear-build/bin/crew"
+  owed="$("$crew" owed "$HC_TERMINAL_ID" 2>/dev/null || echo '{}')"
+  n_owed="$(jq '.owed | length' <<<"$owed" 2>/dev/null || echo 0)"
+  n_flight="$(jq '.in_flight | length' <<<"$owed" 2>/dev/null || echo 0)"
+  n_agents="$(jq '.agents | length' "$f" 2>/dev/null || echo 0)"
+  sig="$(jq -c '[.owed[] | "\(.issue):\(.stage):\(.note)"]' <<<"$owed" 2>/dev/null)"
+  prev_sig="$(jq -r '.guard.sig // ""' "$f" 2>/dev/null)"
+  blocks="$(jq -r '.guard.blocks // 0' "$f" 2>/dev/null)"
+  [ "$sig" = "$prev_sig" ] || blocks=0
+  if [ "${n_owed:-0}" -gt 0 ] && [ "${n_flight:-0}" -eq 0 ] && [ "${n_agents:-0}" -eq 0 ] && [ "$blocks" -lt 3 ]; then
+    blocks=$((blocks + 1))
+    reason="You are this parent's orchestrator, running unattended. Children still wait on you: $(jq -r '[.owed[] | "\(.issue) (\(.stage): \(.note))"] | join("; ")' <<<"$owed"). Keep going until every child is at a PR or escalated with crew ask --auto. Do not ask the user for permission to continue."
+    jq --arg sig "$sig" --argjson b "$blocks" --arg last "$last" --arg now "$now" \
+      '.guard = {sig: $sig, blocks: $b} | .last_message = $last | .state = "working" | .doing = "Continuing unattended work" | .ts = $now' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+    jq -n --arg r "$reason" '{decision: "block", reason: $r}'
+    exit 0
+  fi
+  stuck=false; [ "${n_owed:-0}" -gt 0 ] && [ "${n_flight:-0}" -eq 0 ] && [ "${n_agents:-0}" -eq 0 ] && stuck=true
+  asks=false; printf '%s' "$last" | tail -c 400 | grep -q '?' && asks=true
+  jq --arg sig "$sig" --argjson b "$blocks" --arg last "$last" --argjson stuck "$stuck" --argjson asks "$asks" \
+    '.guard = {sig: $sig, blocks: $b} | .last_message = $last | .stuck = $stuck | .asks = $asks' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+elif [ "$event" = prompt ]; then
+  jq '.stuck = false | .asks = false | .guard.blocks = 0' "$f" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+fi
 
 msg="$(printf '%s' "$doing" | tr -cd '[:alnum:] ._/,()-' | cut -c1-80)"
 { printf '\033]7501;state=%s:app=claude-code:msg=%s\033\\' "$state" "$msg" >/dev/tty; } 2>/dev/null || true

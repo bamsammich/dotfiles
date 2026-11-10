@@ -7,6 +7,8 @@ description: Work a Linear issue, usually a parent with child issues, by having 
 
 Claude (you) makes the decisions and writes the structure. Builder models write the implementation through `crew`. They run on the user's own cluster or machine at no Anthropic cost. Opus reviewers check their work. Spend your own tokens on judgment: reading the issues, deciding, writing stubs and tests, handling escalations and reviewing. Never on watching a builder work.
 
+**Run unattended.** The user starts this work and walks away, often overnight, and expects every child at an end state in the morning: a draft PR, or a decision they can change. You own every child of the parent you were given. Never ask the user whether to continue, never ask in chat which child to do next, and never stop with children waiting on you. A Stop hook enforces this: when you try to stop while children wait on you and nothing is in flight, it sends you back with what is left. Stopping is right only while builds or reviewers are running, since their results wake you. If the repo has no remote to push to, the end state is a reviewed local branch: record it with `crew stage <ISSUE> pr --note "Reviewed; no remote, branch <name> is ready locally"`.
+
 **Report your steps.** The user watches progress on a board in the Herdr app, one card per parent issue, showing whose move each child is waiting on. Builds report themselves. Your own steps only show up if you record them with `crew stage`, `crew review` and `crew parent` at the points this file names. Each call is one short command, so never skip one.
 
 Keep the workflow out of the repo: no workflow files, decision records or architecture decision records. The user runs this workflow alone. `crew` keeps its state in `<worktree>/.crew/`, which git ignores locally. Only stubs, tests and the implementation reach commits.
@@ -67,9 +69,11 @@ Post one comment on the parent issue, titled **Build decisions**, and keep updat
 
 Every decision on the list is yours or the user's. Builders never appear as a source.
 
-**When to pause.** If a planning decision contradicts the design or widens an issue's scope, post the comment, ask the user with `crew ask` (see "Asking the user"), and stop that child until they answer. Otherwise do not pause. The user reviews all decisions at the end.
+**Never pause.** Even a planning decision that contradicts the design or widens an issue's scope does not stop the run. Decide it with `crew ask --auto` (see "Deciding for the user"), record it on Linear, and keep going. The user reviews every decision in the morning and can change any of them.
 
-**Asking the user.** Every question for the user goes through `crew ask <ISSUE> --question "<one sentence>" --option "<Label>: <what happens if they pick it>" ... --recommend <N>`, with two to four options and the 1-based number of your recommendation. The board shows the question as buttons and marks the parent as waiting on the user. When they pick, `crew answer` records the choice and clears the parent's banner. If you run in Herdr, the choice also reaches you as a `[crew board, ...] My decision: ...` message. Otherwise read it from the child's `meta.json` (`.answer.choice`) before you continue. Record the decision on Linear as `[escalation]`, citing the user's choice.
+**Deciding for the user.** Every decision that would otherwise need the user goes through `crew ask <ISSUE> --question "<one sentence>" --option "<Label>: <what happens if they pick it>" ... --recommend <N> --auto`, with two to four options and the 1-based number of your recommendation. `--auto` takes your recommendation immediately, so the child keeps moving. The board shows the decision as "Decided for you", with buttons to change it. Act on your recommendation straight away, and record it on Linear as `[escalation]` with the alternatives. If the user changes it later, the change reaches you as a `[crew board, ...] I'm changing your decision ...` message, or as `.decided[].overridden` in the child's `meta.json`. Redo whatever the change affects.
+
+Leave out `--auto` only when the user has said they are watching and want to choose. Without it, the child waits on the user until `crew answer` records their pick.
 
 ## 4. Build
 
@@ -99,7 +103,7 @@ The `crew scan` runs use the config's `scan_builder` and cost no Anthropic token
 
 **Board updates during review.** Before launching reviewers on a child, run `crew stage <ISSUE> reviewing --note "Claude: <reviewers> reviewing"`. After each reviewer returns, write its full report to a file and run `crew review <ISSUE> <lens> pass|fix-required <number of blocking plus should-fix findings> --file <report.md>`. The board renders that report for the user.
 
-**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, don't loop: `crew ask` the user, offering at least a second fix round and you fixing it yourself, plus any spec change that would make the problem go away.
+**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, don't loop. Run `crew ask --auto`, offering at least a second fix round and you fixing it yourself, plus any spec change that would make the problem go away, and carry out your recommendation.
 
 **Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
 

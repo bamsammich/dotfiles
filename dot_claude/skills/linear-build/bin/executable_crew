@@ -11,8 +11,9 @@
 #                                                         record a parent issue's title and whose turn it is
 #   crew stage  ISSUE planning|reviewing|fixing|escalated|pr|done [--note TEXT]
 #                                                         record a step Claude is on (build steps record themselves)
-#   crew ask    ISSUE --question TEXT --option "LABEL: DETAIL"... [--recommend N]
-#                                                         hand the user a decision with choices (the board shows buttons)
+#   crew ask    ISSUE --question TEXT --option "LABEL: DETAIL"... [--recommend N] [--auto]
+#                                                         a decision with choices; --auto takes the recommendation now
+#                                                         and leaves it on the board for the user to change later
 #   crew answer ISSUE LABEL [--note TEXT]                 record the user's choice (the board calls this)
 #   crew review ISSUE LENS pass|fix-required [FINDINGS] [--file REPORT.md]
 #                                                         record one Opus reviewer's verdict and report
@@ -612,17 +613,26 @@ cmd_review() {
 }
 
 cmd_ask() {
-  local wt q="" rec=0 opts=(); wt="$(need_wt "${1:?ISSUE}")"; shift
+  local wt q="" rec=0 auto=0 opts=(); wt="$(need_wt "${1:?ISSUE}")"; shift
   while [ $# -gt 0 ]; do case "$1" in
     --question) q="$2"; shift 2 ;; --option) opts+=("$2"); shift 2 ;;
-    --recommend) rec="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+    --recommend) rec="$2"; shift 2 ;; --auto) auto=1; shift ;; *) die "unknown arg $1" ;; esac; done
   [ -n "$q" ] || die "pass --question"
   [ "${#opts[@]}" -ge 2 ] || die "pass at least two --option values"
   # "Label: detail" splits into a button label and the text under it.
   local oj; oj="$(printf '%s\n' "${opts[@]}" | jq -R 'capture("^(?<label>[^:]+)(:\\s*(?<detail>.*))?$") | {label: (.label|gsub("^\\s+|\\s+$";"")), detail: (.detail // "")}' | jq -s .)"
-  meta_set "$wt" ".ask = {question: $(jq -n --arg q "$q" '$q'), options: $oj, recommend: ($rec|tonumber), ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"} | del(.answer)"
-  set_stage "$wt" escalated "$q"
+  meta_set "$wt" ".ask = {question: $(jq -n --arg q "$q" '$q'), options: $oj, recommend: ($rec|tonumber), auto: ($auto == 1), ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"} | del(.answer)"
   local parent issue; parent="$(meta "$wt" '.parent // empty')"; issue="$(meta "$wt" .issue)"
+  if [ "$auto" = 1 ]; then
+    # Decide now with the recommendation; the user can change it later.
+    [ "$rec" -ge 1 ] || die "--auto needs --recommend"
+    local pick; pick="$(jq -r --argjson i "$((rec - 1))" '.[$i].label' <<<"$oj")"
+    meta_set "$wt" ".answer = {choice: $(jq -n --arg c "$pick" '$c'), by: \"claude\", ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"} | .decided = ((.decided // []) + [{question: .ask.question, options: .ask.options, choice: $(jq -n --arg c "$pick" '$c'), ts: .answer.ts}])"
+    history_add "$wt" decided "$(jq -cn --arg q "$q" --arg c "$pick" '{question:$q, choice:$c, by:"claude"}')"
+    say "decided $issue for the user: $pick (they can change it on the board)"
+    return 0
+  fi
+  set_stage "$wt" escalated "$q"
   [ -z "$parent" ] || cmd_parent "$parent" --waiting you --note "$issue needs your decision: $q" >/dev/null
   say "asked $issue: $q ($(jq -r 'map(.label) | join(" / ")' <<<"$oj"))"
 }
@@ -630,7 +640,10 @@ cmd_ask() {
 cmd_answer() {
   local wt choice note=""; wt="$(need_wt "${1:?ISSUE}")"; choice="${2:?LABEL}"; shift 2
   while [ $# -gt 0 ]; do case "$1" in --note) note="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
-  meta_set "$wt" ".answer = {choice: $(jq -n --arg c "$choice" '$c'), note: $(jq -n --arg n "$note" '$n'), ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+  local c; c="$(jq -n --arg c "$choice" '$c')"
+  # An answer that changes a choice Claude made for the user is an override.
+  meta_set "$wt" ".answer = {choice: $c, note: $(jq -n --arg n "$note" '$n'), by: \"user\", ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}
+    | .decided = ((.decided // []) | if length > 0 and .[-1].choice != $c and .[-1].overridden == null then .[-1].overridden = $c else . end)"
   history_add "$wt" answer "$(jq -cn --arg c "$choice" --arg n "$note" '{choice:$c, note:$n}')"
   set_stage "$wt" reviewing "You chose \"$choice\"; Claude is acting on it"
   # Clear the parent's banner once none of its children still waits on the user.
@@ -641,6 +654,21 @@ cmd_answer() {
     [ -n "$others" ] || cmd_parent "$parent" --waiting none >/dev/null
   fi
   say "recorded answer for $(meta "$wt" .issue): $choice"
+}
+
+# What the orchestrator in terminal T still owes: children of its parents that
+# wait on Claude, and whether anything is in flight. Prints JSON.
+cmd_owed() {
+  local term="${1:-${HC_TERMINAL_ID:-}}"; [ -n "$term" ] || die "usage: crew owed TERMINAL"
+  local parents; parents="$(jq -s --arg t "$term" '[.[] | select(.orchestrator == $t) | {key, repo}]' "$STATE"/parents/*/*.json 2>/dev/null || echo '[]')"
+  jq -n --argjson ps "$parents" --slurpfile kids <(cat "$(expand "$(cfg .worktree_root)")"/*/*/.crew/meta.json 2>/dev/null | jq -s . ) '
+    ($kids[0] // []) as $all
+    | [ $all[] | . as $k | select(any($ps[]; .key == $k.parent and .repo == $k.repo)) ] as $mine
+    | {
+        owed: [ $mine[] | select((.stage // "building") as $s | ["planning","built","reviewing","escalated"] | index($s)) | {issue, stage, note: .stage_note} ],
+        in_flight: [ $mine[] | select((.stage // "building") as $s | ["building","fixing"] | index($s)) | .issue ],
+        finished: [ $mine[] | select((.stage // "") as $s | ["pr","done"] | index($s)) | .issue ]
+      }'
 }
 
 cmd_parent() {
@@ -695,6 +723,7 @@ case "$sub" in
   review) cmd_review "$@" ;;
   parent) cmd_parent "$@" ;;
   ask) cmd_ask "$@" ;;
+  owed) cmd_owed "$@" ;;
   answer) cmd_answer "$@" ;;
   remove) cmd_remove "${1:?ISSUE}" ;;
   _build) cmd__build "$@" ;;

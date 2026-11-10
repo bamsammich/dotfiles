@@ -207,11 +207,20 @@ export default class CrewBoard extends View {
       const p = progressOf(c, this.agentFor(c.meta.issue));
       now.set(`c|${c.meta.repo}|${c.meta.issue}`, p.mode === "waiting" ? p.who : null);
     }
-    for (const [k, p] of parents) now.set(`p|${k}`, p.waiting === "you" ? "you" : null);
+    for (const [k, p] of parents) {
+      now.set(`p|${k}`, p.waiting === "you" ? "you" : null);
+      const claude = this.claudeFor(p);
+      now.set(`o|${k}`, this.claudeNeedsYou(claude) ? `you:${claude.ts}` : null);
+    }
     if (this.seen) {
       for (const [k, who] of now) {
         if (!who || this.seen.get(k) === who) continue;
         const [kind, , key] = k.split("|");
+        if (kind === "o") {
+          playSound("blocked");
+          notify({ title: `${key}: Claude needs you`, body: "Claude stopped and is waiting for your answer on the crew board.", level: "warning" });
+          continue;
+        }
         const c = kind === "c" ? kids.find((x) => `c|${x.meta.repo}|${x.meta.issue}` === k) : null;
         const p = kind === "p" ? parents.get(k.slice(2)) : null;
         const result = c?.result?.status;
@@ -316,8 +325,12 @@ export default class CrewBoard extends View {
     });
   }
 
+  claudeNeedsYou(claude) {
+    return Boolean(claude) && (claude.state === "blocked" || claude.stuck || (claude.state === "idle" && claude.asks));
+  }
+
   urgency(g) {
-    if (g.parent?.waiting === "you") return 4;
+    if (g.parent?.waiting === "you" || this.claudeNeedsYou(this.claudeFor(g.parent))) return 4;
     const ps = g.kids.map((c) => progressOf(c, this.agentFor(c.meta.issue)));
     if (ps.some((p) => p.mode === "waiting" && p.who === "you")) return 3;
     if (ps.some((p) => p.mode === "waiting" && p.who === "claude")) return 2;
@@ -348,6 +361,8 @@ export default class CrewBoard extends View {
     for (const { p } of prog) if (p.mode === "waiting" && p.who) waiting[p.who]++;
     const working = prog.filter(({ p }) => p.mode === "active" && p.who === "builder").length;
     if (g.parent?.waiting === "you") waiting.you++;
+    const claudeAsks = this.claudeNeedsYou(this.claudeFor(g.parent));
+    if (claudeAsks) waiting.you++;
     const atPR = prog.filter(({ p }) => p.step >= 3).length;
     const steps = prog.reduce((n, { p }) => n + Math.min(p.step, STEPS.length), 0);
     const total = prog.length * STEPS.length;
@@ -391,6 +406,7 @@ export default class CrewBoard extends View {
     const claude = this.claudeFor(g.parent);
     if (!claude) return div();
     const waiting = prog.filter(({ p }) => p.mode === "waiting" && p.who === "claude").map(({ c }) => c);
+    if (this.claudeNeedsYou(claude)) return this.claudeAsks(g, claude, id, t);
     const color = { working: t.working, idle: t.dim, blocked: t.blocked, gone: t.blocked }[claude.state] ?? t.dim;
     const label = { working: "Claude is working", idle: "Claude is idle", blocked: "Claude needs you", gone: "Claude's terminal is closed" }[claude.state] ?? "Claude";
     const dot = div().w(8).h(8).rounded(4).bg(color).flex_none()
@@ -417,6 +433,23 @@ export default class CrewBoard extends View {
           .text_size(12).cursor_pointer()
           .on_click((e, cx) => { cx.stop_propagation(); this.nudge(g, waiting); })
           .child("Nudge Claude"))));
+  }
+
+  // Claude stopped and is waiting on the user: show what it said, loudly.
+  claudeAsks(g, claude, id, t) {
+    const title = claude.state === "blocked" ? "Claude is waiting for you"
+      : claude.stuck ? "Claude stopped with work left and needs you" : "Claude is asking you something";
+    const said = (claude.last_message || claude.doing || "").trim();
+    const tail = said.length > 900 ? `...${said.slice(-900)}` : said;
+    return v_flex().id(`${id}-asks`).mx(14).mb(10).px(12).py(10).gap(8).rounded(8).bg(t.raised).border(1).border_color(t.blocked).min_w(0)
+      .child(h_flex().gap(8).items_center()
+        .child(div().w(8).h(8).rounded(4).bg(t.blocked).flex_none().loop("opacity", { from: 0.35, to: 1, period: 900 }))
+        .child(div().font_semibold().text_color(t.blocked).child(title))
+        .child(div().flex_1())
+        .child(div().text_color(t.dim).text_size(11).child(ago(claude.ts) === "now" ? "just now" : `${ago(claude.ts)} ago`)))
+      .when(Boolean(tail), (el) => el.child(div().max_h(220).overflow_y_scrollbar().id(`${id}-asks-body`)
+        .child(TextView.markdown(`${id}-asks-md-${claude.ts}`, tail))))
+      .child(div().text_size(11).text_color(t.dim).child("Answer in the box below, or open Claude's terminal."));
   }
 
   nudge(g, waiting) {
@@ -510,6 +543,8 @@ export default class CrewBoard extends View {
         .when(Boolean(c.result?.risk?.security), (r) => r.child(
           div().flex_none().px(5).rounded(4).bg(t.raised).text_color(t.blocked).text_size(10).child("security")))
         .child(div().flex_1().min_w(0).text_color(whyColor).child(why))))
+      .when((c.meta.decided ?? []).some((d) => !d.overridden), (el) => el.child(h_flex().pl(KEY).child(
+        this.count(`${(c.meta.decided ?? []).filter((d) => !d.overridden).length} decided for you · review`, t.accent, false, t))))
       .when(links.length > 0, (el) => el.child(h_flex().pl(KEY).gap(12).children(links)));
   }
 
@@ -659,6 +694,7 @@ export default class CrewBoard extends View {
           .child(div().flex_1())
           .when(Boolean(agent), (el) => el.child(this.link("crew-detail-term", "Open builder terminal", () => run("agent.focus", { terminal: agent.address }), t))))
         .when(Boolean(m.ask) && m.stage === "escalated", (el) => el.child(this.decision(m, p, t)))
+        .children((m.decided ?? []).map((d, i) => this.decidedForYou(m, p, d, i, t)))
         .when(Boolean(m.answer) && m.stage !== "escalated", (el) => el.child(h_flex().gap(8).items_center()
           .child(this.count(`You chose: ${m.answer.choice}`, t.done, true, t))
           .child(div().text_color(t.dim).text_size(12).child(ago(m.answer.ts) === "now" ? "just now" : `${ago(m.answer.ts)} ago`))))
@@ -699,10 +735,29 @@ export default class CrewBoard extends View {
       .child(div().text_size(11).text_color(t.dim).child("Or type a different answer below."));
   }
 
-  choose(m, p, o, cx) {
+  // A decision Claude made so the run could continue overnight. The user can
+  // keep it or change it; a change goes to Claude like any other answer.
+  decidedForYou(m, p, d, i, t) {
+    const changed = Boolean(d.overridden);
+    return v_flex().gap(8).px(12).py(10).rounded(10).bg(t.raised).border(1).border_color(changed ? t.border : t.accent)
+      .child(h_flex().gap(8).items_center()
+        .child(this.count(changed ? "You changed this" : "Decided for you", changed ? t.done : t.accent, !changed, t))
+        .child(div().flex_1())
+        .child(div().text_color(t.dim).text_size(11).child(d.ts ? `${ago(d.ts)} ago` : "")))
+      .child(div().font_semibold().child(d.question))
+      .child(div().text_color(t.muted).child(changed ? `Claude chose "${d.choice}"; you changed it to "${d.overridden}".` : `Claude chose "${d.choice}".`))
+      .when(!changed, (el) => el.child(h_flex().gap(6).flex_wrap().children((d.options ?? []).filter((o) => o.label !== d.choice).map((o, j) =>
+        div().id(`chg-${i}-${j}`).px(10).py(5).rounded(7).border(1).border_color(t.border).bg(t.surface).cursor_pointer()
+          .hover((s) => s.bg(t.hover)).text_size(12)
+          .on_click((_e, cx) => this.choose(m, p, o, cx, d))
+          .child(`Change to: ${o.label}`)))));
+  }
+
+  choose(m, p, o, cx, decided) {
     // One choice per question: stay locked until the recorded answer loads.
-    if (this.choosing === m.ask.ts) return;
-    this.choosing = m.ask.ts;
+    const lock = decided ? `${decided.ts}|${o.label}` : m.ask.ts;
+    if (this.choosing === lock) return;
+    this.choosing = lock;
     exec(CREW(), ["answer", m.issue, o.label], { cwd: m.worktree, timeout: 15000 })
       .then((r) => {
         if (r.code !== 0) notify({ title: "Could not record your choice", body: (r.stderr || "").slice(0, 200), level: "error" });
@@ -710,7 +765,10 @@ export default class CrewBoard extends View {
       .catch(() => notify({ title: "Could not record your choice", body: "crew answer failed", level: "error" }));
     if (p.orchestrator) {
       const about = p.parentKey ? `${p.parentKey} / ${p.issue}` : p.issue;
-      hc(["send", p.orchestrator, `[crew board, ${about}] My decision: ${o.label}.${o.detail ? ` ${o.detail}` : ""}`])
+      const said = decided
+        ? `I'm changing your decision on "${decided.question}" from "${decided.choice}" to "${o.label}".${o.detail ? ` ${o.detail}` : ""} Redo the affected work.`
+        : `My decision: ${o.label}.${o.detail ? ` ${o.detail}` : ""}`;
+      hc(["send", p.orchestrator, `[crew board, ${about}] ${said}`])
         .catch(() => notify({ title: "Could not reach Claude", body: "hc send failed", level: "error" }));
     }
     notify({ title: `${m.issue}: ${o.label}`, body: p.orchestrator ? "Sent to Claude." : "Recorded. Claude picks it up from crew's files.", level: "success" });
