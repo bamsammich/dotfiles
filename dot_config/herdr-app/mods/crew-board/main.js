@@ -37,6 +37,12 @@ for p in "$1"/parents/*/*.json; do
   [ -f "$p" ] || continue
   jq -c '{kind: "parent"} + .' "$p" 2>/dev/null
 done
+for a in "$1"/archive/*/*; do
+  [ -d "$a" ] || continue
+  last="$(ls -1d "$a"/*/ 2>/dev/null | tail -1)"; last="\${last%/}"
+  [ -n "$last" ] && [ -f "$last/meta.json" ] || continue
+  jq -c --arg dir "$last" '{kind: "archived", dir: $dir, meta: .}' "$last/meta.json" 2>/dev/null
+done
 for o in "$1"/orchestrators/*.json; do
   [ -f "$o" ] || continue
   jq -c '{kind: "orchestrator"} + .' "$o" 2>/dev/null
@@ -104,6 +110,11 @@ function sendReply(st, orch, about, cx) {
   cx.notify();
 }
 
+function forYouLabel(d) {
+  if (d.auto && !d.overridden) return `Claude decided for you: "${d.choice}"`;
+  return "";
+}
+
 function terminalsLive(address) {
   try { return terminals().some((x) => x.address === address && x.state === "live"); } catch (_) { return false; }
 }
@@ -146,7 +157,9 @@ export default class CrewBoard extends View {
     }
     const top = [...groups.entries()].map(([key, kids]) => ({ key, kids, parent: this.parents.get(key) ?? null }))
       .sort((a, b) => this.urgency(b) - this.urgency(a))[0];
-    if (top) this.openDecisions(top, top.kids);
+    if (!top) return;
+    const forYou = this.decisionsOf(top, top.kids).find(({ d }) => d.auto && !d.overridden);
+    this.openDecisions(top, top.kids, forYou?.d.id);
   }
 
   openMostUrgent() {
@@ -163,12 +176,13 @@ export default class CrewBoard extends View {
   refresh(cx) {
     cx.spawn(async (cx) => {
       const r = await exec("sh", ["-c", SCAN, "crew-board", STATE()], { timeout: 10000 }).catch(() => null);
-      const kids = [], parents = new Map(), orch = new Map();
+      const kids = [], parents = new Map(), orch = new Map(), archived = [];
       for (const line of (r?.stdout ?? "").split("\n")) {
         if (!line.trim()) continue;
         let o; try { o = JSON.parse(line); } catch (_) { continue; }
         if (o.kind === "parent") parents.set(`${o.repo}|${o.key}`, o);
         else if (o.kind === "orchestrator") orch.set(o.terminal, o);
+        else if (o.kind === "archived") archived.push(o);
         else kids.push(o);
       }
       for (const c of kids) {
@@ -177,6 +191,9 @@ export default class CrewBoard extends View {
       this.children_ = kids;
       this.parents = parents;
       this.orch = orch;
+      // Archived children not live any more: their decisions stay in the pane.
+      const live = new Set(kids.map((c) => `${c.meta.repo}|${c.meta.issue}`));
+      this.archived = archived.filter((a) => !live.has(`${a.meta.repo}|${a.meta.issue}`));
       for (const [key, par] of parents) {
         if (par.orchestrator && !this.inputs.has(`card-${key}`)) this.inputs.set(`card-${key}`, makeReply(par.key));
       }
@@ -409,7 +426,6 @@ export default class CrewBoard extends View {
           !kids.length ? "No children in flight" : atPR === kids.length ? "All ready for your review" : `${atPR} of ${kids.length} ready for review · ${steps}/${total} steps`))
         .when(counts.length > 0, (el) => el.child(h_flex().flex_wrap().gap(4).children(counts))))
       .child(this.claudeLine(g, prog, id, t))
-      .child(this.decisionsSummary(g, kids, id, t))
       .when(g.parent?.waiting === "you", (el) => el.child(this.yourTurn(g.parent, id, t, kids.find((c) => c.meta.stage === "escalated"))))
       .when(!folded, (el) => el.child(this.replyBox(g, id, t)))
       .when(!folded && kids.length > 0, (el) => el
@@ -607,8 +623,16 @@ export default class CrewBoard extends View {
         .when(Boolean(c.result?.risk?.security), (r) => r.child(
           div().flex_none().px(5).rounded(4).bg(t.raised).text_color(t.blocked).text_size(10).child("security")))
         .child(div().flex_1().min_w(0).text_color(whyColor).child(why))))
-      .when((c.meta.decisions ?? []).some((d) => d.auto && !d.overridden), (el) => el.child(h_flex().pl(KEY).child(
-        this.count(`${(c.meta.decisions ?? []).filter((d) => d.auto && !d.overridden).length} decided for you · review`, t.accent, false, t))))
+      .when((c.meta.decisions ?? []).some((d) => d.auto && !d.overridden), (el) => {
+        const forYou = (c.meta.decisions ?? []).filter((d) => d.auto && !d.overridden);
+        return el.child(h_flex().pl(KEY).child(div().id(`fy-${c.dir}`).cursor_pointer()
+          .on_click((e, cx) => {
+            cx.stop_propagation();
+            setShared("crew.decisions.focus", { parent: c.meta.parent ?? "", id: forYou[forYou.length - 1].id, ts: Date.now() });
+            run("layout.show", { id: "crew-decisions" });
+          })
+          .child(this.count(`${forYou.length} decided for you · review`, t.accent, false, t))));
+      })
       .when(links.length > 0, (el) => el.child(h_flex().pl(KEY).gap(12).children(links)));
   }
 
@@ -690,16 +714,16 @@ export default class CrewBoard extends View {
     this.parents = new Map();
     this.history = [];
     this.folded = new Set();
-    this.target = null;
+    this.open = null;
     this.focusTs = 0;
-    this.composer = makeReply("", "Comment on the selected decision...");
+    this.composer = makeReply("", "Comment on this decision...");
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
   }
 
   paneGroups() {
     const groups = new Map();
-    for (const c of this.children_) {
+    for (const c of [...this.children_, ...(this.archived ?? []).map((a) => ({ ...a, finished: true }))]) {
       const key = `${c.meta.repo}|${c.meta.parent ?? ""}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(c);
@@ -712,7 +736,9 @@ export default class CrewBoard extends View {
       const sections = [];
       if ((parent?.decisions ?? []).length) sections.push({ g: { issue: null, worktree: null }, list: parent.decisions });
       for (const c of [...kids].sort((a, b) => a.meta.issue.localeCompare(b.meta.issue))) {
-        if ((c.meta.decisions ?? []).length) sections.push({ g: { issue: c.meta.issue, worktree: c.meta.worktree }, list: c.meta.decisions });
+        if ((c.meta.decisions ?? []).length) {
+          sections.push({ g: { issue: c.meta.issue, worktree: c.finished ? c.meta.repo : c.meta.worktree, finished: Boolean(c.finished) }, list: c.meta.decisions });
+        }
       }
       return { key, parentKey, title: parent?.title ?? repo.split("/").pop(), p, sections };
     }).filter((x) => x.sections.length);
@@ -723,13 +749,12 @@ export default class CrewBoard extends View {
     const focus = shared("crew.decisions.focus");
     if (focus && focus.ts !== this.focusTs) {
       this.focusTs = focus.ts;
-      if (focus.id) this.target = focus.id;
+      if (focus.id) this.open = focus.id;
       if (focus.parent) this.folded.delete(`dp-${focus.parent}`);
     }
     const groups = this.paneGroups();
     const all = groups.flatMap((gr) => gr.sections.flatMap((s) => s.list.map((d) => ({ d, g: s.g, p: gr.p }))));
     const changeable = all.filter(({ d }) => d.auto && !d.overridden).length;
-    const target = all.find(({ d }) => d.id === this.target) ?? null;
 
     const body = !groups.length
       ? div().px(16).py(12).text_color(t.dim).child("No decisions yet. Claude logs them here as it works.")
@@ -745,8 +770,8 @@ export default class CrewBoard extends View {
               .child(div().text_color(t.dim).child(String(n)))
               .child(div().text_color(t.dim).child(folded ? "▸" : "▾")))
             .when(!folded, (el) => el.children(gr.sections.map((s) => v_flex().gap(6)
-              .child(div().text_size(11).text_color(t.dim).child(s.g.issue ?? "Parent"))
-              .children([...s.list].reverse().map((d) => this.decisionCard(d, s.g, gr.p, t))))));
+              .child(div().text_size(11).text_color(t.dim).child(s.g.issue ? `${s.g.issue}${s.g.finished ? " · finished" : ""}` : "Parent"))
+              .children([...s.list].reverse().map((d) => this.decisionRow(d, s.g, gr.p, t))))));
         }));
 
     return v_flex().id("crew-decisions-pane").size_full().bg(t.chrome).text_size(12).text_color(t.foreground)
@@ -754,8 +779,68 @@ export default class CrewBoard extends View {
         .child(div().font_semibold().text_size(13).child("Decisions"))
         .child(div().text_color(t.dim).child(String(all.length)))
         .when(changeable > 0, (el) => el.child(this.count(`${changeable} you can change`, t.accent, false, t))))
-      .child(div().id("crew-decisions-pane-body").flex_1().min_h(0).px(10).py(10).overflow_y_scrollbar().child(body))
-      .child(this.decisionComposer(target, target?.p ?? null, t));
+      .child(div().id("crew-decisions-pane-body").flex_1().min_h(0).px(10).py(10).overflow_y_scrollbar().child(body));
+  }
+
+  // One line per decision; a click opens it in place with its reasoning,
+  // choices, thread and a comment box. One row is open at a time.
+  decisionRow(d, g, p, t) {
+    const SHORT = { plan: "Plan", ratified: "Ratified", escalation: "For you", design: "Design" };
+    const open = this.open === d.id;
+    const forYou = d.auto && !d.overridden;
+    const nComments = (d.comments ?? []).length;
+    const head = h_flex().id(`dr-${d.id}`).px(8).py(6).gap(8).items_start().rounded(6).cursor_pointer()
+      .bg(open ? t.raised : t.chrome).hover((s) => s.bg(open ? t.raised : t.hover))
+      .on_click((_e, cx) => { this.open = open ? null : d.id; cx.notify(); })
+      .child(div().mt(5).w(6).h(6).rounded(3).flex_none().bg(forYou ? t.accent : t.chrome))
+      .child(div().w(50).flex_none().text_size(10).mt(1).text_color(forYou ? t.accent : t.dim).child(SHORT[d.source] ?? d.source))
+      .child(open
+        ? div().flex_1().min_w(0).font_semibold().child(d.what)
+        : div().flex_1().min_w(0).truncate().text_color(t.foreground).child(d.what))
+      .when(nComments > 0, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(`${nComments} 💬`)))
+      .child(div().flex_none().text_color(t.dim).child(open ? "▾" : "▸"));
+    if (!open) return head;
+    return v_flex().id(`dro-${d.id}`).rounded(8).bg(t.raised).border(1).border_color(forYou ? t.accent : t.border)
+      .child(head)
+      .child(this.decisionBody(d, g, p, t));
+  }
+
+  decisionBody(d, g, p, t) {
+    const changed = Boolean(d.overridden);
+    const st = this.composer;
+    const send = (cx) => this.commentOn(d, g, p, cx);
+    st.onSubmit = send;
+    return v_flex().pl(72).pr(10).pb(10).gap(8)
+      .child(h_flex().gap(8).text_size(11).text_color(t.dim)
+        .child(div().child(d.id))
+        .child(div().child(d.ts ? `${ago(d.ts)} ago` : ""))
+        .when(Boolean(forYouLabel(d)), (el) => el.child(div().text_color(t.accent).child(forYouLabel(d)))))
+      .when(Boolean(d.why), (el) => el.child(div().text_color(t.muted).child(d.why)))
+      .when(changed, (el) => el.child(div().text_color(t.muted).child(`Claude chose "${d.choice}"; you changed it to "${d.overridden}".`)))
+      .when(d.auto && !changed && !g.finished && (d.options ?? []).length > 1, (el) => el.child(h_flex().gap(6).flex_wrap()
+        .children(d.options.filter((o) => o.label !== d.choice).map((o, j) =>
+          div().id(`chg-${d.id}-${j}`).px(10).py(5).rounded(7).border(1).border_color(t.border).bg(t.surface).cursor_pointer()
+            .hover((s) => s.bg(t.hover)).text_size(12)
+            .on_click((_e, cx) => this.changeDecision(d, g, p, o, cx))
+            .child(`Change to: ${o.label}`)))))
+      .when((!d.auto || g.finished) && (d.options ?? []).length > 0, (el) => el.child(div().text_color(t.dim).text_size(12)
+        .child(`${d.auto ? "Other options" : "Alternatives weighed"}: ${d.options.filter((o) => o.label !== d.choice).map((o) => o.label).join("; ")}`)))
+      .when(Boolean(g.finished) && d.auto && !changed, (el) => el.child(div().text_color(t.dim).text_size(11)
+        .child("This child is finished. To change the decision, comment and Claude will reopen the work.")))
+      .when((d.comments ?? []).length > 0, (el) => el.child(v_flex().gap(6).pl(10).border_l(2).border_color(t.border)
+        .children(d.comments.map((c) => v_flex().gap(1)
+          .child(h_flex().gap(6).text_size(11)
+            .child(div().font_semibold().text_color(c.by === "user" ? t.foreground : t.accent).child(c.by === "user" ? "You" : "Claude"))
+            .child(div().text_color(t.dim).child(`${ago(c.ts)} ago`)))
+          .child(div().text_size(12).child(c.text))))))
+      .child(h_flex().gap(6).items_center()
+        .child(Input.new(st.input).flex_1().min_w(0).h(30).px(8).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(12))
+        .child(h_flex().id(`cmt-send-${d.id}`).h(30).px(10).items_center().rounded(7)
+          .bg(st.text.trim() ? t.solid : t.surface).text_color(st.text.trim() ? t.solid_foreground : t.dim)
+          .text_size(12).cursor_pointer().on_click((_e, cx) => send(cx)).child("Send")))
+      .child(div().text_size(11).text_color(t.dim).child(p.orchestrator
+        ? "Claude gets your comment, acts on it if needed, and replies here."
+        : "Saved with the decision; Claude reads it from crew's files."));
   }
 
   // ------------------------------------------------------------ decisions window

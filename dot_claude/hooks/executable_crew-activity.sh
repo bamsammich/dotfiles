@@ -39,14 +39,12 @@ case "$event" in
 esac
 
 # Track subagents: started on Agent/Task calls, finished on SubagentStop.
-agents_js='.agents // []'
+# These expressions run with jq -n, so the current list is $c.agents.
+agents_js='($c.agents // [])'
 if [ "$event" = pretool ] && jq -e '.tool_name == "Agent" or .tool_name == "Task"' <<<"$payload" >/dev/null 2>&1; then
-  agents_js="(.agents // []) + [{type: \$p.tool_input.subagent_type, about: \$p.tool_input.description, since: \$now}]"
+  agents_js="(\$c.agents // []) + [{type: \$p.tool_input.subagent_type, about: \$p.tool_input.description, since: \$now}]"
 elif [ "$event" = subagent-stop ]; then
-  agents_js='(.agents // [])[1:]'
-elif [ "$event" = stop ] || [ "$event" = prompt ]; then
-  # A turn that ends with no background work leaves no agents out.
-  agents_js='if ($p.stop_hook_active // false) then (.agents // []) else (.agents // []) end'
+  agents_js='($c.agents // [])[1:]'
 fi
 jq -n --argjson c "$cur" --argjson p "${payload:-{\}}" --arg now "$now" --arg state "$state" --arg doing "$doing" \
   --arg term "$HC_TERMINAL_ID" --arg cwd "$PWD" \

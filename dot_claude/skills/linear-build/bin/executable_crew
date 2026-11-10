@@ -676,6 +676,9 @@ decision_file() { # decision_file KEY: print the file holding KEY's decisions
   local key; key="$(upper "$1")"
   local wt; wt="$(wt_path "$key")"
   if [ -f "$wt/.crew/meta.json" ]; then echo "$wt/.crew/meta.json"; return; fi
+  # A finished child keeps its decisions in its newest archive copy.
+  local arch; arch="$(ls -1d "$ARCHIVE/$(repo_name)/$key"/*/ 2>/dev/null | tail -1)"
+  if [ -n "$arch" ] && [ -f "${arch%/}/meta.json" ]; then echo "${arch%/}/meta.json"; return; fi
   local pf="$STATE/parents/$(repo_name)/$key.json"
   [ -f "$pf" ] || die "no child worktree or parent named $key in $(repo_name)"
   echo "$pf"
