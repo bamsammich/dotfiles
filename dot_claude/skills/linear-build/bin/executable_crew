@@ -5,7 +5,13 @@
 # <worktree>/.crew/, which .git/info/exclude hides, so nothing but the
 # implementation ever reaches a commit.
 #
-#   crew init   ISSUE [--base REF] [--branch NAME]        create worktree, print its path
+#   crew init   ISSUE [--base REF] [--branch NAME] [--parent KEY] [--title TEXT]
+#                                                         create worktree, print its path
+#   crew parent KEY [--title T] [--waiting you|none] [--note N] [--link URL] [--orchestrator TERMINAL]
+#                                                         record a parent issue's title and whose turn it is
+#   crew stage  ISSUE planning|reviewing|fixing|escalated|pr|done [--note TEXT]
+#                                                         record a step Claude is on (build steps record themselves)
+#   crew review ISSUE LENS pass|fix-required [FINDINGS]   record one Opus reviewer's verdict
 #   crew path   ISSUE                                     print worktree path
 #   crew seal   ISSUE [--test CMD] [--attempts B,B] [--protect FILE...]
 #                                                         record stub commit, rules and builders
@@ -80,14 +86,27 @@ history_add() { # history_add WT EVENT [JSON_FIELDS]: append one event line
       branch:$m[0].branch, worktree:$m[0].worktree} + $x' >>"$HISTORY" 2>/dev/null || true
 }
 
+# Stages: planning (Claude), building (builder), built (waiting for review),
+# reviewing (Claude's reviewers), fixing (builder), escalated (Claude handed a
+# decision to the user), pr (waiting on the user),
+# done. Build results set stages themselves; the skill reports Claude's steps.
+STAGES="planning building built reviewing fixing escalated pr done"
+set_stage() { # set_stage WT STAGE [NOTE]
+  local wt="$1" st="$2" note="${3:-}"
+  meta_set "$wt" ".stage=$(jq -n --arg s "$st" '$s') | .stage_note=$(jq -n --arg n "$note" '$n') | .stage_ts=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+  history_add "$wt" stage "$(jq -cn --arg s "$st" --arg n "$note" '{stage:$s, note:$n}')"
+}
+
 builder_ok() { jq -e --arg b "$1" '.builders[$b]' "$CONF" >/dev/null || die "unknown builder '$1' (see: crew builders)"; }
 
 # ---------------------------------------------------------------- init / seal
 cmd_init() {
-  local issue base="" branch=""
+  local issue base="" branch="" parent="" title=""
   issue="$(upper "${1:?ISSUE}")"; shift
   while [ $# -gt 0 ]; do case "$1" in
-    --base) base="$2"; shift 2 ;; --branch) branch="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+    --base) base="$2"; shift 2 ;; --branch) branch="$2"; shift 2 ;;
+    --parent) parent="$(upper "$2")"; shift 2 ;; --title) title="$2"; shift 2 ;;
+    *) die "unknown arg $1" ;; esac; done
   local root wt common
   root="$(repo_root)"; common="$(repo_common)"; wt="$(wt_path "$issue")"
   [ -e "$wt" ] && die "worktree already exists: $wt"
@@ -103,9 +122,11 @@ cmd_init() {
   grep -qxF '.crew/' "$common/info/exclude" 2>/dev/null || echo '.crew/' >>"$common/info/exclude"
   mkdir -p "$wt/.crew"
   jq -n --arg issue "$issue" --arg branch "$branch" --arg base "$base" --arg base_sha "$base_sha" \
-        --arg repo "$root" --arg wt "$wt" \
-    '{issue:$issue, branch:$branch, base:$base, base_sha:$base_sha, repo:$repo, worktree:$wt}' \
+        --arg repo "$root" --arg wt "$wt" --arg parent "$parent" --arg title "$title" \
+    '{issue:$issue, branch:$branch, base:$base, base_sha:$base_sha, repo:$repo, worktree:$wt,
+      parent:(if $parent == "" then null else $parent end), title:(if $title == "" then null else $title end)}' \
     >"$wt/.crew/meta.json"
+  set_stage "$wt" planning "Claude is writing stubs, tests and the spec"
   echo "$wt"
 }
 
@@ -270,6 +291,13 @@ write_result() { # write_result WT STATUS ATTEMPT_LOG_JSON [NOTE]
     >"$sd/result.json.tmp"
   mv "$sd/result.json.tmp" "$sd/result.json"
   history_add "$wt" result "$(jq -c '{status, note, attempts, attempt_log, head, risk_security: .risk.security}' "$sd/result.json")"
+  # Only the builder's own stages are the builder's to change.
+  case "$(meta "$wt" '.stage // "building"')" in building|fixing) ;; *) return 0 ;; esac
+  case "$2" in
+    passed) set_stage "$wt" built "Tests pass; waiting for Claude's review" ;;
+    question) set_stage "$wt" building "Waiting on Claude to answer the builder's questions" ;;
+    *) set_stage "$wt" building "Waiting on Claude: build ${2}" ;;
+  esac
 }
 
 # Herdr marks a terminal as an agent when its program prints OSC 7501 status
@@ -291,12 +319,37 @@ build_exit() {
     write_result "$BUILD_WT" error '[]' "crew _build stopped before reporting; see .crew/build.log" || true
     herdr_status error "crew stopped before reporting"
   fi
-  # In a Herdr app tab, stay open so the tab keeps its final status;
-  # status clears once the program exits. Closing the tab ends it.
-  if [ "${CREW_HOLD_TAB:-}" = 1 ] && [ -r /dev/tty ]; then
-    echo; echo "crew: build finished. Close this tab, or press Enter, when you are done reading."
-    read -r _ </dev/tty || true
+  # In a Herdr app tab, stay open so the tab keeps its final status (Herdr
+  # clears it when the program exits), then close the tab once the child
+  # moves on: Claude takes the next step, another build starts, the worktree
+  # is removed, 20 minutes pass, or the user presses Enter.
+  if [ "${CREW_HOLD_TAB:-}" = 1 ] && [ -r /dev/tty ] && [ -n "$BUILD_WT" ]; then
+    local mark deadline st
+    mark="$(date -r "$BUILD_WT/.crew/result.json" +%s 2>/dev/null || echo none)"
+    deadline=$(( $(date +%s) + 1200 ))
+    echo; echo "crew: build finished. This tab closes when Claude moves on, after 20 minutes, or when you press Enter."
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      read -r -t 5 _ </dev/tty && break
+      [ -f "$BUILD_WT/.crew/meta.json" ] || break
+      [ "$(date -r "$BUILD_WT/.crew/result.json" +%s 2>/dev/null || echo none)" = "$mark" ] || break
+      st="$(jq -r '.stage // "building"' "$BUILD_WT/.crew/meta.json" 2>/dev/null)"
+      case "$st" in building|built|fixing) ;; *) break ;; esac
+    done
+    close_own_tab
   fi
+}
+
+# Close this build's Herdr tab, or its whole space when it is the last tab.
+close_own_tab() {
+  [ -n "${HC_TERMINAL_ID:-}" ] && command -v herdr-app >/dev/null 2>&1 || return 0
+  local ls ids space tab count
+  ls="$(herdr-app ls 2>/dev/null)" || return 0
+  ids="$(jq -r --arg t "$HC_TERMINAL_ID" '.spaces[] | . as $s | .tabs[] | select(any(.terminals[]; .terminal == $t))
+         | "\($s.id) \(.id) \($s.tabs | length)"' <<<"$ls" | head -1)"
+  [ -n "$ids" ] || return 0
+  read -r space tab count <<<"$ids"
+  if [ "$count" = 1 ]; then herdr-app do space.close --id "$space" --confirmed true >/dev/null 2>&1 || true
+  else herdr-app do tab.close --id "$tab" --confirmed true >/dev/null 2>&1 || true; fi
 }
 
 cmd__build() { # internal: _build WT
@@ -398,8 +451,10 @@ APP_SPACE=""
 use_herdr_app() {
   case "$(cfg .herdr)" in off|false|tui) return 1 ;; esac
   command -v herdr-app >/dev/null 2>&1 || return 1
+  # An open window answers status with its view; a closed one errors. A
+  # window with no spaces open still counts (its "space" is null).
   local s; s="$(herdr-app status 2>/dev/null || true)"
-  [ -n "$(jq -r '.space // empty' <<<"$s" 2>/dev/null)" ]
+  jq -e 'has("zoom")' <<<"$s" >/dev/null 2>&1
 }
 
 app_launch() { # app_launch WT RUN_LABEL ISSUE
@@ -420,6 +475,8 @@ app_launch() { # app_launch WT RUN_LABEL ISSUE
 launch() { # launch WT [RUN_LABEL]
   local wt="$1" label="${2:-}" issue pid; issue="$(meta "$wt" .issue)"
   rm -f "$wt/.crew/result.json"
+  if [ -s "$wt/.crew/feedback.md" ]; then set_stage "$wt" fixing "Builder is fixing reviewer findings"
+  else set_stage "$wt" building "Builder is implementing"; fi
   if use_herdr_app && app_launch "$wt" "${label:-$issue}" "$issue"; then
     return
   fi
@@ -484,6 +541,9 @@ cmd_scan() {
   while [ $# -gt 0 ]; do case "$1" in --lens) lens="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
   [ -n "$lens" ] || die "pass --lens critic|security|qa|staff"
   local wt; wt="$(need_wt "$issue")"
+  # A scan stashes any edits it finds afterwards, so it must never overlap a
+  # build that is editing the same worktree.
+  if pgrep -f "crew _build $wt\$" >/dev/null 2>&1; then die "a build is running in $issue; scan after it finishes"; fi
   do_scan "$wt" "$lens" >>"$wt/.crew/build.log" 2>&1
   echo "$wt/.crew/scan-$lens.md"
 }
@@ -526,13 +586,54 @@ cmd_pr() {
   [ -n "$url" ] || die "usage: crew pr ISSUE URL"
   meta_set "$wt" ".pr=$(jq -n --arg u "$url" '$u')"
   history_add "$wt" pr "$(jq -cn --arg u "$url" '{pr:$u}')"
+  set_stage "$wt" pr "Draft PR open; waiting on your review"
   say "recorded PR for $(meta "$wt" .issue): $url"
+}
+
+cmd_stage() {
+  local wt st note=""; wt="$(need_wt "${1:?ISSUE}")"; st="${2:?STAGE}"; shift 2
+  while [ $# -gt 0 ]; do case "$1" in --note) note="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+  [[ " $STAGES " == *" $st "* ]] || die "unknown stage $st (one of: $STAGES)"
+  set_stage "$wt" "$st" "$note"
+}
+
+cmd_review() {
+  local wt lens verdict n; wt="$(need_wt "${1:?ISSUE}")"; lens="${2:?LENS}"; verdict="${3:?VERDICT}"; n="${4:-0}"
+  case "$verdict" in pass|fix-required) ;; *) die "verdict is pass or fix-required" ;; esac
+  meta_set "$wt" ".reviews[$(jq -n --arg l "$lens" '$l')] = {verdict: $(jq -n --arg v "$verdict" '$v'), findings: ($n|tonumber), ts: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+  history_add "$wt" review "$(jq -cn --arg l "$lens" --arg v "$verdict" --argjson n "$n" '{lens:$l, verdict:$v, findings:$n}')"
+}
+
+cmd_parent() {
+  local key title="" waiting="" note="" link="" orch="" f cur
+  key="$(upper "${1:?KEY}")"; shift
+  while [ $# -gt 0 ]; do case "$1" in
+    --title) title="$2"; shift 2 ;; --waiting) waiting="$2"; shift 2 ;;
+    --note) note="$2"; shift 2 ;; --link) link="$2"; shift 2 ;;
+    --orchestrator) orch="$2"; shift 2 ;; *) die "unknown arg $1" ;; esac; done
+  case "$waiting" in ""|you|none) ;; *) die "--waiting is you or none" ;; esac
+  # Claude running in a Herdr terminal has HC_TERMINAL_ID; the board sends
+  # the user's replies there.
+  orch="${orch:-${HC_TERMINAL_ID:-}}"
+  f="$STATE/parents/$(repo_name)/$key.json"; mkdir -p "$(dirname "$f")"
+  cur="$(cat "$f" 2>/dev/null || echo '{}')"
+  jq -n --argjson c "$cur" --arg key "$key" --arg repo "$(repo_root)" --arg title "$title" \
+        --arg waiting "$waiting" --arg note "$note" --arg link "$link" --arg orch "$orch" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '$c + {key:$key, repo:$repo, ts:$ts}
+       + (if $title != "" then {title:$title} else {} end)
+       + (if $waiting != "" then {waiting:$waiting, note:$note} else {} end)
+       + (if $link != "" then {link:$link} else {} end)
+       + (if $orch != "" then {orchestrator:$orch} else {} end)' >"$f.tmp" && mv "$f.tmp" "$f"
+  mkdir -p "$STATE"; jq -c '{ts, event:"parent", issue:.key, repo:(.repo|split("/")|last), repo_path:.repo, title, waiting, note, link}' "$f" >>"$HISTORY"
+  say "parent $key: $(jq -c '{title, waiting, note}' "$f")"
 }
 
 cmd_remove() {
   local wt branch issue dest; wt="$(need_wt "$1")"; branch="$(meta "$wt" .branch)"; issue="$(meta "$wt" .issue)"
   dest="$ARCHIVE/$(repo_name)/$issue/$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$dest" && cp -R "$wt/.crew/." "$dest/"
+  set_stage "$wt" done "Finished"
+  cp "$wt/.crew/meta.json" "$dest/meta.json"
   history_add "$wt" removed "$(jq -cn --arg a "$dest" '{archive:$a}')"
   git -C "$(repo_root)" worktree remove --force "$wt"
   say "removed $wt (branch $branch kept; .crew archived to $dest)"
@@ -551,6 +652,9 @@ case "$sub" in
   builders) cmd_builders ;;
   test-cmd) cmd_test_cmd "$@" ;;
   pr) cmd_pr "$@" ;;
+  stage) cmd_stage "$@" ;;
+  review) cmd_review "$@" ;;
+  parent) cmd_parent "$@" ;;
   remove) cmd_remove "${1:?ISSUE}" ;;
   _build) cmd__build "$@" ;;
   *) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$SELF"; exit 1 ;;

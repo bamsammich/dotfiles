@@ -7,6 +7,8 @@ description: Work a Linear issue, usually a parent with child issues, by having 
 
 Claude (you) makes the decisions and writes the structure. Builder models write the implementation through `crew`. They run on the user's own cluster or machine at no Anthropic cost. Opus reviewers check their work. Spend your own tokens on judgment: reading the issues, deciding, writing stubs and tests, handling escalations and reviewing. Never on watching a builder work.
 
+**Report your steps.** The user watches progress on a board in the Herdr app, one card per parent issue, showing whose move each child is waiting on. Builds report themselves. Your own steps only show up if you record them with `crew stage`, `crew review` and `crew parent` at the points this file names. Each call is one short command, so never skip one.
+
 Keep the workflow out of the repo: no workflow files, decision records or architecture decision records. The user runs this workflow alone. `crew` keeps its state in `<worktree>/.crew/`, which git ignores locally. Only stubs, tests and the implementation reach commits.
 
 **`crew` is not on PATH.** It ships in this skill's folder. Every `crew ...` command in this file means `~/.claude/skills/linear-build/bin/crew ...`, so always call it by that full path. The builders, attempt defaults and Linear team keys live in `~/.claude/skills/linear-build/config.json`. Run `crew` with no arguments for its command list, and `crew builders` for the configured builders.
@@ -24,7 +26,7 @@ The user's design phase already settled the structure before the issues existed.
 For each child issue (or the parent alone, if it has no children):
 
 1. Explore only as much code as the decisions need. Use CodeGraph or an Explore subagent for wide searches.
-2. `crew init <ISSUE> [--base <ref>] [--branch <name>]` creates a worktree outside the repo and prints its path. Work in that path.
+2. `crew init <ISSUE> --parent <PARENT> [--base <ref>] [--branch <name>]` creates a worktree outside the repo and prints its path. Work in that path. Run `crew parent <PARENT> --title "<parent issue title>"` once per parent before the first child.
 3. Write the stubs: every new function signature, exported type and interface the child needs, with bodies that compile but do nothing useful (`panic("unimplemented")`, `return nil, errors.New("unimplemented")`, and so on).
 4. Write the tests that define done. They should compile and fail on the stubs for the right reason. Run them to confirm.
 5. Write `<worktree>/.crew/spec.md`, which the builder treats as the source of truth:
@@ -93,7 +95,9 @@ Reviews are Opus subagents. Give each one only its worktree path, issue key and 
 
 The `crew scan` runs use the config's `scan_builder` and cost no Anthropic tokens. Run them in the background in parallel before the reviewers that need them.
 
-**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, report them to the user rather than looping.
+**Board updates during review.** Before launching reviewers on a child, run `crew stage <ISSUE> reviewing --note "Claude: <reviewers> reviewing"`. After each reviewer returns, run `crew review <ISSUE> <lens> pass|fix-required <number of blocking plus should-fix findings>`.
+
+**On `fix-required`.** Write the blocking and should-fix findings to a file and run `crew fix <ISSUE> --feedback <file>` in the background. `crew fix` marks the child as fixing on its own. Then run `crew-critic` again on the fix only (tell it to use `crew diff <ISSUE> --fix`). Allow one fix round per issue. If blocking findings remain, report them to the user rather than looping.
 
 **Unpinned behavior.** crew-critic lists every behavior the builder had to pick where spec and tests were silent. Decide each one yourself. If you keep the builder's choice, add a test that pins it and record it as `[ratified]`. If you overrule it, put the change in the `crew fix` feedback along with a test that pins your answer. Either way the decision is yours, and the tests now hold it.
 
@@ -107,7 +111,7 @@ For each child that passed review, push its branch and open a **draft** PR with 
 
 End the PR body with the attribution line from the system reminder.
 
-Record each PR with `crew pr <ISSUE> <PR URL>`, so the user's build history links issue, branch and PR. Then `crew remove <ISSUE>` for each finished worktree. It archives the worktree's `.crew/` folder first, and the branches stay.
+Record each PR with `crew pr <ISSUE> <PR URL>`, so the user's build history links issue, branch and PR. It also moves the child to the PR stage, which the board shows as waiting on the user. When the last child's PR is open, run `crew parent <PARENT> --waiting you --note "Review the Build decisions comment, then the draft PRs" --link <decisions comment URL>`. Then `crew remove <ISSUE>` for each finished worktree. It archives the worktree's `.crew/` folder first, and the branches stay.
 
 ## 7. Report
 
@@ -115,6 +119,12 @@ Tell the user, in a few lines:
 - a link to the Build decisions comment, which they review first
 - the draft PRs
 - anything stopped: questions you could not answer, issues that failed twice, unresolved blocking findings
+
+## Messages from the board
+
+When you run in a Herdr terminal, `crew parent` records that terminal as the parent's orchestrator, and the crew board in the Herdr app shows a reply box on the parent's card. Whatever the user types there reaches you as a message starting with `[crew board, <PARENT>]`. Treat it as the user speaking about that parent issue: an answer to an escalation, a correction or a new instruction. When the reply settles an escalated child, record the decision on Linear, then move the child on with `crew stage`, `crew fix` or your own work, and clear the banner with `crew parent <PARENT> --waiting none`.
+
+If the session has no memory of the parent, rebuild it from `crew`'s files before acting. `~/.local/state/crew/parents/<repo>/<PARENT>.json` holds the parent's title and the open question. Each child's `~/.local/state/crew/wt/<repo>/<CHILD>/.crew/` holds its spec, meta (stage, reviews, attempts), result, questions and scans, and `crew status <CHILD>` prints the latest result.
 
 ## Token rules
 

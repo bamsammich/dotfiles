@@ -156,7 +156,7 @@
               "id": "crew-board",
               "type": "block",
               "size": {
-                "px": 340
+                "px": 400
               },
               "min": 260,
               "max": 700,
