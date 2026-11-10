@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# crew shim: builder-model runs see this git first on PATH. It blocks history
+# and remote changes so only crew commits, and nothing pushes.
+self_dir="$(cd "$(dirname "$0")" && pwd)"
+skip=0
+for a in "$@"; do
+  if [ "$skip" = 1 ]; then skip=0; continue; fi
+  case "$a" in
+    -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--exec-path) skip=1; continue ;;
+    -*) continue ;;
+    push|commit|rebase|reset|switch|merge|cherry-pick|revert|worktree|remote|tag|am|filter-branch|update-ref)
+      echo "crew: 'git $a' is blocked during crew builds; crew commits after tests pass." >&2
+      exit 1 ;;
+    *) break ;;
+  esac
+done
+PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$self_dir" | paste -sd: -)"
+exec git "$@"

@@ -19,6 +19,9 @@
   Fresh machine, no deployed file: the volatile keys come out empty, which is
   correct — no plugins are installed there yet.
 
+  `model` is volatile in the same way: `/model` and the desktop app's model
+  picker write it, so it is read back rather than pinned here.
+
   The keys are read back through jq rather than fromJson/toPrettyJson because
   Go's map iteration sorts, and Claude Code writes in insertion order. Sorting
   them would leave `chezmoi diff` permanently showing a reordering that means
@@ -28,18 +31,21 @@
 {{- $enabledPlugins := "{}" -}}
 {{- $marketplaces := "{}" -}}
 {{- $autoMode := "" -}}
+{{- $model := "" -}}
 {{- $deployed := joinPath .chezmoi.homeDir ".claude/settings.json" -}}
 {{- if stat $deployed -}}
 {{-   $enabledPlugins = output "jq" ".enabledPlugins // {}" $deployed -}}
 {{-   $marketplaces = output "jq" ".extraKnownMarketplaces // {}" $deployed -}}
 {{-   $autoMode = output "jq" ".autoMode // empty" $deployed -}}
+{{-   $model = output "jq" "-r" ".model // empty" $deployed | trim -}}
 {{- end -}}
 {
   "permissions": {
     "allow": [
       "mcp__codegraph__*"
     ]
-  },
+  },{{ if $model }}
+  "model": {{ $model | quote }},{{ end }}
   "hooks": {
     "SessionStart": [
       {
@@ -64,6 +70,10 @@
             "type": "command",
             "command": "{{ .chezmoi.homeDir }}/.claude/hooks/prose-rules.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/linear-build-hint.sh"
           }
         ]
       }
@@ -75,6 +85,12 @@
           {
             "type": "command",
             "command": "rtk hook claude"
+          },
+          {
+            "type": "command",
+            "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py pretool",
+            "timeout": 10,
+            "statusMessage": "Prose tripwire..."
           }
         ]
       }
@@ -88,6 +104,29 @@
             "command": "{{ .chezmoi.homeDir }}/.claude/hooks/proselint-advise.sh",
             "timeout": 10,
             "statusMessage": "Checking prose..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py stop",
+            "timeout": 15,
+            "statusMessage": "Prose tripwire..."
+          }
+        ]
+      }
+    ],
+    "MessageDisplay": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py display",
+            "timeout": 5
           }
         ]
       }
