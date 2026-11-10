@@ -551,7 +551,11 @@ cmd_scan() {
   local wt; wt="$(need_wt "$issue")"
   # A scan stashes any edits it finds afterwards, so it must never overlap a
   # build that is editing the same worktree.
-  if pgrep -f "crew _build $wt\$" >/dev/null 2>&1; then die "a build is running in $issue; scan after it finishes"; fi
+  # A finished build may still hold its Herdr tab open; only a build with no
+  # result yet is still editing.
+  if [ ! -f "$wt/.crew/result.json" ] && pgrep -f "crew _build $wt\$" >/dev/null 2>&1; then
+    die "a build is running in $issue; scan after it finishes"
+  fi
   do_scan "$wt" "$lens" >>"$wt/.crew/build.log" 2>&1
   echo "$wt/.crew/scan-$lens.md"
 }

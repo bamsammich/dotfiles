@@ -29,7 +29,11 @@ case "$event" in
       elif ($t | startswith("mcp__")) then "Using \($t | split("__") | last)"
       else $t end' <<<"$payload" 2>/dev/null)" ;;
   subagent-stop) doing="A subagent finished" ;;
-  notify) state=blocked; doing="$(jq -r '.message // "Needs your attention"' <<<"$payload" 2>/dev/null)" ;;
+  notify)
+    # Only a permission prompt stops Claude; the 60-second idle reminder
+    # ("waiting for your input") is not a request.
+    doing="$(jq -r '.message // ""' <<<"$payload" 2>/dev/null)"
+    case "$doing" in *ermission*|*approve*|*allow*) state=blocked ;; *) exit 0 ;; esac ;;
   stop) state=idle; doing="Waiting for you" ;;
   *) exit 0 ;;
 esac

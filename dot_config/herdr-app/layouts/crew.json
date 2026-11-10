@@ -153,16 +153,44 @@
               "hidden": true
             },
             {
-              "id": "crew-board",
-              "type": "block",
+              "id": "crew-column",
+              "type": "column",
               "size": {
                 "px": 400
               },
-              "min": 260,
-              "max": 700,
-              "content": {
-                "mod": "crew-board"
-              }
+              "min": 300,
+              "max": 760,
+              "divider": {
+                "width": 1,
+                "color": "border"
+              },
+              "children": [
+                {
+                  "id": "crew-board",
+                  "type": "block",
+                  "size": {
+                    "weight": 3
+                  },
+                  "min": 200,
+                  "content": {
+                    "mod": "crew-board"
+                  }
+                },
+                {
+                  "id": "crew-decisions",
+                  "type": "block",
+                  "size": {
+                    "weight": 2
+                  },
+                  "min": 160,
+                  "content": {
+                    "mod": "crew-board",
+                    "props": {
+                      "pane": "decisions"
+                    }
+                  }
+                }
+              ]
             }
           ],
           "padding": 8,
