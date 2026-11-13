@@ -28,7 +28,10 @@ case "$event" in
       elif $t == "Read" then "Reading \($i.file_path | split("/") | last)"
       elif ($t | startswith("mcp__")) then "Using \($t | split("__") | last)"
       else $t end' <<<"$payload" 2>/dev/null)" ;;
-  subagent-stop) doing="A subagent finished" ;;
+  subagent-stop)
+    # A subagent finishing says nothing about Claude itself: keep its state.
+    state="$(jq -r '.state // "working"' "$f" 2>/dev/null || echo working)"
+    doing="$(jq -r '.doing // ""' "$f" 2>/dev/null)" ;;
   notify)
     # Only a permission prompt stops Claude; the 60-second idle reminder
     # ("waiting for your input") is not a request.
@@ -48,7 +51,8 @@ elif [ "$event" = subagent-stop ]; then
 fi
 jq -n --argjson c "$cur" --argjson p "${payload:-{\}}" --arg now "$now" --arg state "$state" --arg doing "$doing" \
   --arg term "$HC_TERMINAL_ID" --arg cwd "$PWD" \
-  "\$c + {terminal: \$term, cwd: \$cwd, state: \$state, doing: \$doing, ts: \$now, agents: ($agents_js)}" \
+  "\$c + {terminal: \$term, cwd: \$cwd, state: \$state, doing: \$doing, ts: \$now, agents: ($agents_js),
+         transcript: (\$p.transcript_path // \$c.transcript), session: (\$p.session_id // \$c.session)}" \
   >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
 
 # ---- stop guard and last message

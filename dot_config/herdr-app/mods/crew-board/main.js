@@ -11,7 +11,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView, InputState, Input } from "gpui-base";
-import { agents, terminals, nextCommand, shared, setShared, exec, hc, home, readTextFile, run, theme, props, openOverlay, closeOverlay, notify, playSound } from "herdr";
+import { agents, terminals, panes, spaces, nextCommand, shared, setShared, exec, hc, home, readTextFile, run, theme, props, openOverlay, closeOverlay, notify, playSound } from "herdr";
 
 const STATE = () => `${home()}/.local/state/crew`;
 const CREW = () => `${home()}/.claude/skills/linear-build/bin/crew`;
@@ -494,11 +494,12 @@ export default class CrewBoard extends View {
     const agents = claude.agents ?? [];
     return v_flex().id(`${id}-claude`).mx(14).mb(10).px(10).py(8).gap(4).rounded(8).bg(t.background).min_w(0)
       .cursor_pointer().hover((s) => s.bg(t.hover))
-      .on_click(() => g.parent?.orchestrator && run("agent.focus", { terminal: g.parent.orchestrator }))
+      .on_click(() => g.parent?.orchestrator && this.openChat(g.parent.orchestrator))
       .child(h_flex().gap(8).items_center()
         .child(dot)
         .child(div().font_semibold().text_color(claude.state === "working" ? t.foreground : color).child(label))
         .child(div().flex_1())
+        .child(this.link(`${id}-chat`, "Open chat", () => this.openChat(g.parent.orchestrator), t, true))
         .child(div().text_color(t.dim).text_size(11).child(ago(claude.ts) === "now" ? "just now" : `${ago(claude.ts)} ago`)))
       .when(Boolean(claude.doing) && claude.state !== "idle", (el) => el.child(div().pl(16).min_w(0).text_color(t.muted).child(claude.doing)))
       .when(agents.length > 0, (el) => el.child(v_flex().pl(16).gap(2).children(agents.map((a) =>
@@ -529,7 +530,19 @@ export default class CrewBoard extends View {
         .child(div().text_color(t.dim).text_size(11).child(ago(claude.ts) === "now" ? "just now" : `${ago(claude.ts)} ago`)))
       .when(Boolean(tail), (el) => el.child(div().max_h(220).overflow_y_scrollbar().id(`${id}-asks-body`)
         .child(TextView.markdown(`${id}-asks-md-${claude.ts}`, tail))))
-      .child(div().text_size(11).text_color(t.dim).child("Answer in the box below, or open Claude's terminal."));
+      .child(h_flex().gap(12).text_size(11)
+        .child(div().text_color(t.dim).child("Answer in the box below, or"))
+        .child(this.link(`${id}-asks-chat`, "open the chat", () => this.openChat(g.parent.orchestrator), t, true)));
+  }
+
+  // A chat view of the orchestrating Claude, as a tab in the same space as
+  // its terminal. An existing chat tab there is reused.
+  openChat(term) {
+    const pane = panes().find((p) => p.terminal === term);
+    const space = pane ? spaces().find((s) => s.tabs.some((tb) => tb.id === pane.tab)) : null;
+    const chat = panes().find((p) => p.mod === "claude-chat" && (!space || space.tabs.some((tb) => tb.id === p.tab)));
+    if (chat) { run("tab.select", { id: chat.tab }); return; }
+    run("tab.new", { ...(space ? { space: space.id } : {}), name: "Chat", mod: "claude-chat", props: { terminal: term } });
   }
 
   nudge(g, waiting) {
