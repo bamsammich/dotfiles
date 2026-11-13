@@ -299,6 +299,12 @@ run = 'layout floating'
 if.app-id = 'us.zoom.xos'
 run = 'layout floating'
 
+# --- Splashtop: float remote sessions so AeroSpace never resizes them ---
+# AeroSpace has no option to ignore a window, so floating is the closest it gets.
+[[on-window-detected]]
+if.app-id = 'com.splashtop.stb.macosx'
+run = 'layout floating'
+
 # ===========================================================================
 # Workspace Assignments
 # ===========================================================================
