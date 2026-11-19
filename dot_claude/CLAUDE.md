@@ -1,4 +1,5 @@
 <!-- CODEGRAPH_START -->
+
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
@@ -7,6 +8,7 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 - **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+
 <!-- CODEGRAPH_END -->
 
 ## docsearch
@@ -21,49 +23,18 @@ If the docsearch tools are not present, skip all of this.
 
 @RTK.md
 
-## Edit files with Edit and Write
+## Review happens in a draft PR
 
-Change files with the Edit and Write tools. This overrides auto mode, which
-prefers Bash for anything Bash can do.
+I review work on GitHub, in a draft pull request. I don't use reviewd any more,
+and its plugin is turned off. Don't open a reviewd review or wait on one, even
+where a skill, a repository's docs or an older memory says to.
 
-Use Bash to read and search (`cat`, `grep`, `rg`, `find`) and to run things
-(builds, tests, `git`, `chezmoi`). Do not use it for `sed -i`, `perl -pi`, `tee`
-into a file, heredoc redirects over a file, or a script written to rewrite a
-file.
+1. Commit to a branch, never to the default branch, and push it.
+2. Open the pull request as a draft and give me its link.
+3. Answer my review comments with more commits on the same branch.
 
-Edit and Write render as diff cards I can review. They also error out when the
-target text does not match. Bash writes whatever you told it to and reports
-success.
-
-## reviewd review before commit
-
-No code gets committed until I have approved it. A `PreToolUse` hook denies
-`git commit` until reviewd holds an approval for the exact bytes in the working
-tree.
-
-The hook, the MCP server and the skill all come from the `reviewd` plugin, which
-lives in the reviewd repository and is installed from it. Nothing about reviewd
-is configured here any more, so there is one copy of the gate rather than two
-that can drift.
-
-Use the `reviewd` skill. In short:
-
-1. `review_create` with every directory the change touches, and give me the URL
-   it returns.
-2. `reviewd wait --review <id>` as a **background** command, so the session
-   resumes when I submit. The verdict is the first line of output: `approved`,
-   `changes_requested`, `comment`, `released`, or `timeout`. The exit code only
-   says whether the wait worked.
-3. On changes requested, read `threads_list({ turn: "agent" })`, fix, reply,
-   and `review_snapshot` before waiting again.
-4. Commit, then `review_release`.
-
-Approval is mine alone and covers exactly the bytes I approved. Editing after
-approval re-arms the gate. Comments I have not submitted are invisible to you
-on purpose, so do not act on something you have not been sent.
-
-Never write an approval by hand, and do not suggest `REVIEWD_SKIP=1` unless I
-ask for it.
+Marking a draft ready for review and merging it are my calls. Do either only
+when I say so, and never turn on auto-merge unless I ask.
 
 ## Search before building
 
