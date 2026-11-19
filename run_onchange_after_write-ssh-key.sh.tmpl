@@ -1,0 +1,60 @@
+{{- if eq .chezmoi.os "darwin" -}}
+{{- /*
+  macOS only. Writes ~/.ssh/id_ed25519 encrypted with the passphrase kept in
+  the 1Password item "SSH Key", then hands that passphrase to the macOS
+  Keychain so ssh, git fetch and commit signing never prompt.
+
+  chezmoi re-runs this script when either value below changes. Only the key
+  fingerprint and a hash of the passphrase land in the rendered script; the
+  secrets themselves are read with `op` while it runs.
+
+  Linux still gets the unencrypted key from dot_ssh/private_id_ed25519.tmpl.
+*/ -}}
+{{- $item := onepassword "SSH Key" "Private" -}}
+{{- $passphrase := "" -}}
+{{- range $item.fields -}}
+{{-   if eq .label "passphrase" -}}{{ $passphrase = .value }}{{- end -}}
+{{- end -}}
+#!/bin/sh
+# key fingerprint: {{ onepasswordRead "op://Private/SSH Key/fingerprint" }}
+# passphrase sha256: {{ $passphrase | sha256sum }}
+set -eu
+
+key="${HOME}/.ssh/id_ed25519"
+ref="op://Private/SSH Key"
+{{- if .onepassword.account }}
+export OP_ACCOUNT={{ .onepassword.account | quote }}
+{{- end }}
+
+{{ if eq $passphrase "" -}}
+echo "write-ssh-key: the 1Password item \"SSH Key\" has no \"passphrase\" field." >&2
+echo "write-ssh-key: leaving ${key} unchanged. Add the field, then run chezmoi apply." >&2
+exit 0
+{{- else -}}
+umask 077
+mkdir -p "${HOME}/.ssh"
+work="$(mktemp -d "${HOME}/.ssh/.write-ssh-key.XXXXXX")"
+trap 'rm -rf "${work}"' EXIT
+
+op read "${ref}/private key?ssh-format=openssh" > "${work}/key"
+passphrase="$(op read "${ref}/passphrase")"
+
+# ssh-keygen only takes a new passphrase as an argument. It is visible in the
+# process list for the instant ssh-keygen runs, on a single-user machine.
+ssh-keygen -q -p -P "" -N "${passphrase}" -f "${work}/key" >/dev/null
+mv -f "${work}/key" "${key}"
+chmod 600 "${key}"
+
+# Store the passphrase in the login Keychain and load the key into the agent.
+# SSH_ASKPASS feeds the passphrase without a terminal prompt.
+printf '#!/bin/sh\nprintf "%%s\\n" "$SSH_KEY_PASSPHRASE"\n' > "${work}/askpass"
+chmod 700 "${work}/askpass"
+if SSH_KEY_PASSPHRASE="${passphrase}" SSH_ASKPASS="${work}/askpass" SSH_ASKPASS_REQUIRE=force \
+  /usr/bin/ssh-add --apple-use-keychain "${key}" </dev/null; then
+  echo "write-ssh-key: ${key} is passphrase-protected and stored in the Keychain."
+else
+  echo "write-ssh-key: ${key} is passphrase-protected, but no agent was reachable." >&2
+  echo "write-ssh-key: run: /usr/bin/ssh-add --apple-use-keychain ${key}" >&2
+fi
+{{- end }}
+{{ end -}}
