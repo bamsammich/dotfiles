@@ -1,0 +1,17 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/sh
+# Keep Homebrew packages current without anyone remembering to run it.
+# domt4/autoupdate installs a launchd agent that runs brew update, brew upgrade
+# and brew cleanup every 24 hours, and once at login. Casks that update
+# themselves (1Password, Claude, Slack, Zoom, Ghostty and so on) are left to
+# their own updaters. The Brewfile still decides what is installed; this only
+# keeps those packages up to date. Logs: ~/Library/Logs/com.github.domt4.homebrew-autoupdate
+#
+# Re-runs when this file changes. Settings: interval=86400 --upgrade --cleanup --immediate
+set -eu
+brew tap domt4/autoupdate >/dev/null
+if brew autoupdate status 2>/dev/null | grep -qi "installed and running"; then
+  brew autoupdate delete >/dev/null
+fi
+brew autoupdate start 86400 --upgrade --cleanup --immediate
+{{ end -}}
