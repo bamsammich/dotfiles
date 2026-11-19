@@ -33,6 +33,7 @@ global:
       - "aerospace"
     mas: []
     taps:
+      - "domt4/autoupdate"
       - "nikitabobko/tap"
   pacman:
     packages:
