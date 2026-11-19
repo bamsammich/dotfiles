@@ -12,6 +12,11 @@ key.txt.age
 .pwsh/**
 {{ end }}
 
+{{/* ===== macOS: run_onchange_after_write-ssh-key.sh writes the key passphrase-protected ===== */}}
+{{ if eq .chezmoi.os "darwin" }}
+.ssh/id_ed25519
+{{ end }}
+
 {{/* ===== Linux-only: ignore on macOS ===== */}}
 {{ if ne .chezmoi.os "linux" }}
 .bashrc
