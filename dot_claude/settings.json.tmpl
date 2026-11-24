@@ -96,6 +96,21 @@
             "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py pretool",
             "timeout": 10,
             "statusMessage": "Prose tripwire..."
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/skills/review-changes/bin/review-gate gate",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*pull_request_create",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/skills/review-changes/bin/review-gate gate",
+            "timeout": 15
           }
         ]
       },
@@ -146,6 +161,11 @@
             "type": "command",
             "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh subagent-stop",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{ .chezmoi.homeDir }}/.claude/skills/review-changes/bin/review-gate record",
+            "timeout": 15
           }
         ]
       }

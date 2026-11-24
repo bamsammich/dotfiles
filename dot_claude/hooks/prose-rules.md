@@ -1,7 +1,9 @@
 PROSE RULES. Goal: understood on one read. Engaging second. Everything below serves those two.
 Scope: replies, docs, commit messages, PR bodies, code and config comments, email, UI copy.
 Check a draft: python3 ~/.claude/hooks/proselint.py FILE
-Then read each sentence once, cold, as the reader will. A sentence that needs a second pass gets rewritten, whatever the linter says.
+The linter holds the NEVER rules, word repeats and the colon rate, as regexes, and lists reread pointers. CLEAN means the regexes passed, not the rules. Twenty-five rule lines have no check.
+A hook stops a reply, commit message or PR body once when the linter reports a finding, and the second send goes through. The stopped draft was held off the reader's screen, so the resend is the full text, with no note about the reread. Mode in ~/.claude/.prose-tripwire-mode: always, findings (default), zero, off, plus loud to show drafts.
+Then read each sentence once, cold, as the reader will, garden paths first. A sentence that needs a second pass gets rewritten, whatever the linter says.
 No rule outranks the goal. A fix that clears one rule but costs a reread is wrong.
 
 NEVER (no human in the 65-excerpt corpus does these)
