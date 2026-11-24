@@ -198,6 +198,8 @@ def split_heredocs(cmd):
         out.append(line)
         i += 1
         m = HEREDOC.search(line) if "<<<" not in line else None
+        if m and line[:m.start()].count("$((") > line[:m.start()].count("))"):
+            m = None  # a shift inside $(( )), not a heredoc
         if not m:
             continue
         body = []
@@ -212,8 +214,9 @@ def split_heredocs(cmd):
 
 COMMON_CAPTURES = [
     # $(...) forms whose value the gate knows without running them.
-    (re.compile(r"\"?\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD)\s*\)\"?"), "HEAD"),
-    (re.compile(r"\"?\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)\"?"), "."),
+    # Quotes around them stay, so the quoting of the command is unchanged.
+    (re.compile(r"\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD)\s*\)"), "HEAD"),
+    (re.compile(r"\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)"), "."),
 ]
 
 
@@ -333,7 +336,7 @@ def push_args(d, args, cfg):
 
 def git_push(seg, i, d, depth):
     """seg[i] is a git word. Return targets if this invocation pushes, else None."""
-    rest, cfg = seg[i + 1:], []
+    rest, cfg, gitdir = seg[i + 1:], [], False
     while rest and rest[0].startswith("-"):
         a = rest[0]
         if a == "-C" and len(rest) > 1:
@@ -341,13 +344,15 @@ def git_push(seg, i, d, depth):
         elif a == "-c" and len(rest) > 1:
             cfg.append(rest[1]); rest = rest[2:]
         elif a.startswith("--git-dir="):
-            d = gitdir_to_dir(d, a.split("=", 1)[1]); rest = rest[1:]
+            d, gitdir = gitdir_to_dir(d, a.split("=", 1)[1]), True
+            rest = rest[1:]
         elif a.startswith("--work-tree="):
-            d = resolve_dir(d, a.split("=", 1)[1]); rest = rest[1:]
+            d = d if gitdir else resolve_dir(d, a.split("=", 1)[1])
+            rest = rest[1:]
         elif a in ("--git-dir", "--work-tree", "--namespace") and len(rest) > 1:
             if a == "--git-dir":
-                d = gitdir_to_dir(d, rest[1])
-            elif a == "--work-tree":
+                d, gitdir = gitdir_to_dir(d, rest[1]), True
+            elif a == "--work-tree" and not gitdir:
                 d = resolve_dir(d, rest[1])
             rest = rest[2:]
         else:
@@ -413,17 +418,18 @@ def push_targets(cmd, cwd, depth=0):
             for sub in substitutions(w):
                 if ANY_GIT.search(sub):
                     out += push_targets(sub, cur, depth + 1)
-        d, k = cur, 0
+        d, k, env = cur, 0, {}
         while k < len(seg):
             if re.match(r"^[A-Za-z_]\w*=", seg[k]):
                 name, val = seg[k].split("=", 1)
-                if name == "GIT_DIR":
-                    d = gitdir_to_dir(cur, val)
-                elif name == "GIT_WORK_TREE":
-                    d = resolve_dir(cur, val)
+                env[name] = val
             elif os.path.basename(seg[k]) not in PREFIX:
                 break
             k += 1
+        if "GIT_DIR" in env:
+            d = gitdir_to_dir(cur, env["GIT_DIR"])
+        elif "GIT_WORK_TREE" in env:
+            d = resolve_dir(cur, env["GIT_WORK_TREE"])
         words = [os.path.basename(w) for w in seg]
         if words[k:k + 1] == ["cd"] and len(seg) > k + 1:
             cur = resolve_dir(cur, seg[k + 1])
@@ -522,9 +528,10 @@ def gate(payload):
     blocked, unchecked = check(targets)
     if unchecked:
         return deny("Blocked by review-gate: this push cannot be checked, because "
-                    + "; ".join(unchecked)
-                    + ". Shell variables and $( ) are not expanded. Run the push from inside the "
-                    "repository with a literal branch name.")
+                    + "; ".join(unchecked) + ". "
+                    + ("Shell variables and $( ) are not expanded, so run the push from inside the "
+                       "repository with a literal branch name." if "$" in " ".join(unchecked) else
+                       "Check the branch name and the directory."))
     if not blocked:
         return 0
     return deny("Blocked by review-gate: these commits have not passed both the security and the staff review: "
