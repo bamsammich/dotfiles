@@ -22,7 +22,7 @@ Rate by exploitability in this codebase, not in the abstract.
 
 ## How to work
 
-1. Run `cd <repo>` as a command of its own, then read the focus range with `git diff <from>..<head>` and `git log --oneline <from>..<head>`. Use plain `git diff`, `git log` and `git show` with no `-C` flag and no `&&` chains, so they match read-only permission rules. Use the whole-branch range only for context.
+1. Run `cd <repo>` as a command of its own, then read the focus range with `git diff <from>..<head>` and `git log --oneline <from>..<head>`. Use plain `git diff`, `git log` and `git show` with no `-C` flag and no `&&` chains, so they match read-only permission rules. Use the whole-branch range only for context. If a git command is refused or fails and you cannot read the focus range's diff, stop: return `VERDICT: fix-required` with the single finding that the review could not see the diff. A pass from a review that never saw the diff would let unreviewed code through.
 2. Open surrounding code where the diff alone cannot settle a question: callers, middleware, the policy layer, how input reaches the changed code.
 3. Edit nothing, and run no git command that changes state. Running tests is fine.
 
