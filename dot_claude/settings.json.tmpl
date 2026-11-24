@@ -70,15 +70,6 @@
             "type": "command",
             "command": "{{ .chezmoi.homeDir }}/.claude/hooks/prose-rules.sh",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/linear-build-hint.sh"
-          },
-          {
-            "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh prompt",
-            "timeout": 5
           }
         ]
       }
@@ -113,15 +104,6 @@
             "timeout": 15
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh pretool",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -145,11 +127,6 @@
             "command": "python3 -I {{ .chezmoi.homeDir }}/.claude/hooks/prose-tripwire.py stop",
             "timeout": 15,
             "statusMessage": "Prose tripwire..."
-          },
-          {
-            "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh stop",
-            "timeout": 5
           }
         ]
       }
@@ -159,24 +136,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh subagent-stop",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "{{ .chezmoi.homeDir }}/.claude/skills/review-changes/bin/review-gate record",
             "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{{ .chezmoi.homeDir }}/.claude/hooks/crew-activity.sh notify",
-            "timeout": 5
           }
         ]
       }

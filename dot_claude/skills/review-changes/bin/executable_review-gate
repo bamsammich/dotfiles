@@ -1,0 +1,287 @@
+#!/usr/bin/env -S python3 -I
+"""review-gate: security and staff review markers for git commits.
+
+  review-gate status [repo]   JSON: head, base, the range still to review, and
+                              whether head has passed both reviews.
+  review-gate record          SubagentStop hook. Reads a security-reviewer or
+                              staff-reviewer report and stores its verdict.
+  review-gate gate            PreToolUse hook. Denies `git push`, `gh pr create`
+                              and pull_request_create tools unless the pushed
+                              commit passed both reviews.
+
+Markers live in <git common dir>/review-gate/<sha>.json, shared by every
+worktree of a repository and never committed. `touch ~/.claude/.review-gate-off`
+turns the gate off.
+"""
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROLES = {"security-reviewer": "security", "staff-reviewer": "staff"}
+OFF = Path.home() / ".claude" / ".review-gate-off"
+SKILL = "review-changes"
+
+
+def git(repo, *args):
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def toplevel(path):
+    return git(path, "rev-parse", "--show-toplevel") if path and os.path.isdir(path) else None
+
+
+def marker_dir(repo):
+    d = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return Path(d) / "review-gate"
+
+
+def load(repo, sha):
+    try:
+        return json.loads((marker_dir(repo) / f"{sha}.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def passed(repo, sha):
+    m = load(repo, sha)
+    return all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values())
+
+
+def base_ref(repo):
+    ref = git(repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
+    if ref:
+        return ref
+    for cand in ("origin/main", "origin/master", "main", "master"):
+        if git(repo, "rev-parse", "--verify", "-q", cand + "^{commit}"):
+            return cand
+    return None
+
+
+def status(repo, head="HEAD"):
+    head = git(repo, "rev-parse", "--verify", "-q", head + "^{commit}")
+    if not head:
+        return {"repo": repo, "head": None, "base_ref": None, "base": None, "last_passed": None,
+                "review_from": None, "passed": False, "needs_review": False}
+    ref = base_ref(repo)
+    base = git(repo, "merge-base", head, ref) if ref else None
+    span = f"{base}..{head}" if base else head
+    shas = (git(repo, "rev-list", "--max-count=500", span) or "").split()
+    last = next((s for s in shas if passed(repo, s)), None)
+    return {
+        "repo": repo,
+        "head": head,
+        "base_ref": ref,
+        "base": base,
+        "last_passed": last,
+        "review_from": last or base,
+        "passed": head == last,
+        "needs_review": bool(shas) and head != last,
+    }
+
+
+# ---------------------------------------------------------------- record
+
+def report_texts(payload):
+    """Candidate report texts, newest last: the transcript, then the final message."""
+    texts = []
+    tp = payload.get("agent_transcript_path")
+    if tp:
+        try:
+            for line in Path(os.path.expanduser(tp)).read_text().splitlines():
+                try:
+                    msg = json.loads(line).get("message") or {}
+                except ValueError:
+                    continue
+                content = msg.get("content")
+                if msg.get("role") != "assistant" or not isinstance(content, list):
+                    continue
+                for block in content:
+                    if block.get("type") == "text":
+                        texts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        m = (block.get("input") or {}).get("message")
+                        if isinstance(m, str):
+                            texts.append(m)
+        except OSError:
+            pass
+    texts.append(payload.get("last_assistant_message") or "")
+    return texts
+
+
+def parse(text):
+    def field(name):
+        m = re.search(rf"^\s*`*{name}:\s*`*([^\s`]+)", text, re.M)
+        return m.group(1) if m else None
+    verdict = field("VERDICT")
+    if verdict not in ("pass", "fix-required"):
+        return None
+    return {"repo": field("REPO"), "sha": field("REVIEWED"), "verdict": verdict}
+
+
+def record(payload):
+    role = ROLES.get(payload.get("agent_type") or "")
+    if not role:
+        return 0
+    found = None
+    for text in reversed(report_texts(payload)):
+        found = parse(text)
+        if found:
+            break
+    problem = None
+    if not found:
+        problem = "no REPO, REVIEWED and VERDICT header lines in the report"
+    else:
+        repo = toplevel(found["repo"]) or toplevel(payload.get("cwd"))
+        sha = repo and found["sha"] and git(repo, "rev-parse", "--verify", "-q", found["sha"] + "^{commit}")
+        if not repo:
+            problem = f"REPO {found['repo']!r} is not a git repository"
+        elif not sha:
+            problem = f"REVIEWED {found['sha']!r} is not a commit in {repo}"
+    if problem:
+        if payload.get("stop_hook_active"):
+            print(f"review-gate: {role} review not recorded: {problem}", file=sys.stderr)
+            return 0
+        print(f"review-gate could not record this review: {problem}. Deliver your report again, "
+              "starting with the three lines REPO, REVIEWED and VERDICT exactly as your instructions show.",
+              file=sys.stderr)
+        return 2
+    d = marker_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    m = load(repo, sha)
+    m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
+               "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    tmp = d / f".{sha}.{os.getpid()}.tmp"
+    tmp.write_text(json.dumps(m, indent=1))
+    tmp.replace(d / f"{sha}.json")
+    return 0
+
+
+# ---------------------------------------------------------------- gate
+
+SEP = re.compile(r"&&|\|\||;|\||\n")
+
+
+def push_targets(cmd, cwd):
+    """(repo dir, commit) pairs that a shell command would push or open a PR for."""
+    out = []
+    cur = cwd
+    for seg in SEP.split(cmd):
+        try:
+            words = shlex.split(seg)
+        except ValueError:
+            words = seg.split()
+        while words and re.match(r"^\w+=", words[0]):
+            words = words[1:]
+        if words[:1] == ["rtk"]:
+            words = words[1:]
+        if len(words) >= 2 and words[0] == "cd":
+            cur = os.path.normpath(os.path.join(cur, os.path.expanduser(words[1])))
+            continue
+        if words[:3] == ["gh", "pr", "create"]:
+            out.append((cur, "HEAD"))
+            continue
+        if words[:1] != ["git"]:
+            continue
+        rest, d = words[1:], cur
+        while rest and rest[0].startswith("-"):
+            if rest[0] == "-C" and len(rest) > 1:
+                d = os.path.normpath(os.path.join(d, os.path.expanduser(rest[1])))
+                rest = rest[2:]
+            elif rest[0] == "-c" and len(rest) > 1:
+                rest = rest[2:]
+            else:
+                rest = rest[1:]
+        if rest[:1] != ["push"]:
+            continue
+        args = rest[1:]
+        if any(a in ("--delete", "-d") for a in args):
+            continue
+        pos = [a for a in args if not a.startswith("-")]
+        refspecs = pos[1:]
+        if not refspecs:
+            if "--tags" not in args:
+                out.append((d, "HEAD"))
+            continue
+        for spec in refspecs:
+            src = spec.lstrip("+").split(":", 1)[0]
+            if src:
+                out.append((d, src))
+    return out
+
+
+def deny(reason):
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason}}))
+    return 0
+
+
+def gate(payload):
+    if OFF.exists():
+        return 0
+    tool = payload.get("tool_name") or ""
+    inp = payload.get("tool_input") or {}
+    cwd = payload.get("cwd") or os.getcwd()
+    if tool == "Bash":
+        cmd = inp.get("command") or ""
+        if not re.search(r"\bgit\b.*\bpush\b|\bgh\s+pr\s+create\b", cmd):
+            return 0
+        targets = push_targets(cmd, cwd)
+    elif re.search(r"pull_request_create$", tool):
+        where = next((inp[k] for k in ("cwd", "repoPath", "repo_path", "worktreePath") if isinstance(inp.get(k), str)), cwd)
+        targets = [(where, "HEAD")]
+    else:
+        return 0
+    blocked = []
+    for d, rev in targets:
+        repo = toplevel(d)
+        if not repo:
+            continue
+        sha = git(repo, "rev-parse", "--verify", "-q", rev + "^{commit}")
+        if not sha:
+            continue
+        st = status(repo, sha)
+        if st["needs_review"]:
+            m = load(repo, sha)
+            got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
+            blocked.append(f"{repo} at {sha[:12]} ({got}; review range {(st['review_from'] or '')[:12] or 'root'}..{sha[:12]})")
+    if not blocked:
+        return 0
+    return deny("Blocked by review-gate: these commits have not passed both the security and the staff review: "
+                + "; ".join(blocked)
+                + f". Commit your work, then follow the {SKILL} skill, which runs security-reviewer and "
+                "staff-reviewer in parallel and records their verdicts. Do not write review-gate marker files "
+                "yourself. If a blocking finding looks wrong, ask the user.")
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "status":
+        repo = toplevel(sys.argv[2] if len(sys.argv) > 2 else os.getcwd())
+        if not repo:
+            print("review-gate: not inside a git repository", file=sys.stderr)
+            return 1
+        print(json.dumps(status(repo), indent=1))
+        return 0
+    payload = json.load(sys.stdin)
+    if cmd == "record":
+        return record(payload)
+    if cmd == "gate":
+        try:
+            return gate(payload)
+        except Exception as e:  # fail closed, loudly
+            return deny(f"review-gate crashed ({type(e).__name__}: {e}). Tell the user; they can turn the "
+                        "gate off with `touch ~/.claude/.review-gate-off`.")
+    print(__doc__, file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
