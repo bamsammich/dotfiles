@@ -81,6 +81,14 @@ check deny  "$(printf 'x=$(echo $((a<<b)))\ngit push origin unreviewed')"
 check deny  "$(printf '(( n = 1 << shift ))\ngit push origin unreviewed')"
 check deny  "$(printf 'git commit -m \"explain <<EOF syntax\"\ngit push origin unreviewed')"
 check deny  "git push --repo=origin unreviewed"
+MSG="$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"'\nBlock git push until reviews pass\n\nIt'"'"'s gated now.\nEOF\n)"')"
+check allow "$MSG"
+check allow "$(printf 'gh pr create --draft --title t --body "$(cat <<'"'"'EOF'"'"'\nRun git push origin some-branch after review.\nIt'"'"'s fine.\nEOF\n)"')"
+check allow "git push -u origin reviewed 2>&1"
+check allow "git push -u origin reviewed > /dev/null 2>&1"
+q "$W" checkout unreviewed
+check deny  "git push 2>&1 | tail -5"
+q "$W" checkout reviewed
 check deny  "git --git-dir=$W/.git --work-tree=$T/origin push origin unreviewed" "$T"
 check deny  "pushd $W && git push origin unreviewed" "$T"
 check deny  "if cd $W; then git push origin unreviewed; fi" "$T"
@@ -124,5 +132,11 @@ printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass | fix-required\n' "$W" "$H" |
 if [ -e "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review-gate/$H.json" ]; then
   echo "FAIL  template VERDICT line was recorded"; fails=$((fails+1))
 else echo "ok    template VERDICT line not recorded"; fi
+
+got="$(jq -n --arg cwd "$W" '{tool_name:"mcp__github__create_pull_request",tool_input:{},cwd:$cwd}' | "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+q "$W" checkout unreviewed
+got="$(jq -n --arg cwd "$W" '{tool_name:"mcp__github__create_pull_request",tool_input:{},cwd:$cwd}' | "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+q "$W" checkout reviewed
+if [ "$got" = deny ]; then echo "ok    deny  mcp create_pull_request"; else echo "FAIL  mcp create_pull_request got $got"; fails=$((fails+1)); fi
 
 echo; [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

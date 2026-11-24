@@ -267,19 +267,41 @@ def quiet_single_quotes(cmd):
     return "".join(out)
 
 
+def flatten_newlines(cmd):
+    """Newlines outside quotes end a command, so they become ;. Newlines inside
+    quotes are text, and a quoted $( ) keeps them for its own parse."""
+    out, state, i = [], None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if state is None and c == "\\" and i + 1 < len(cmd):
+            out.append(" " if cmd[i + 1] == "\n" else cmd[i:i + 2]); i += 2
+            continue
+        if state is None and c in "'\"":
+            state = c
+        elif state == c:
+            state = None
+        elif state is None and c == "\n":
+            c = " ; "
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def segments(cmd):
     """Token lists, one per simple command. A subshell's ( and ) come back as
     the one-token lists ["("] and [")"]."""
     cmd = quiet_single_quotes(cmd)
     for rx, value in COMMON_CAPTURES:
         cmd = rx.sub(value, cmd)
-    cmd = cmd.replace("\\\n", " ").replace("\n", " ; ")
+    cmd = flatten_newlines(cmd)
     lex = shlex.shlex(cmd, posix=True, punctuation_chars=PUNCT)
     lex.whitespace_split = True
     lex.commenters = ""
     seg = []
     for tok in lex:  # raises ValueError on unbalanced quotes
         if tok and set(tok) <= set(PUNCT):
+            if tok[0] in "<>" and seg and seg[-1].isdigit():
+                seg.pop()  # the 2 of 2>&1 or 2>/dev/null is a file descriptor
             if seg:
                 yield seg
             seg = []
@@ -544,9 +566,10 @@ def gate(payload):
         except ValueError:
             if not PUSH_HINT.search(cmd):
                 return 0
-            return deny("Blocked by review-gate: this command mentions a push but could not be parsed "
-                        "(unbalanced quotes?). Run the push as its own plain command.")
-    elif re.search(r"pull_request_create$", tool):
+            return deny("Blocked by review-gate: this command mentions a push or a pull request but "
+                        "could not be parsed (unbalanced quotes?). Run the push or gh pr create as a "
+                        "command of its own.")
+    elif re.search(r"(pull_request_create|create_pull_request)$", tool):
         where = next((inp[k] for k in ("cwd", "repoPath", "repo_path", "worktreePath")
                       if isinstance(inp.get(k), str)), cwd)
         targets = [(where, "HEAD")]
