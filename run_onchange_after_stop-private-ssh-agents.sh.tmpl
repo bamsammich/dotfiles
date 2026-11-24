@@ -1,0 +1,18 @@
+{{- if eq .chezmoi.os "darwin" -}}
+#!/bin/sh
+# macOS shells used to start a private agent each (eval "$(ssh-agent -s)"),
+# and none of them exited. Stop those, then load the Keychain-held key into
+# launchd's agent, which every process shares. Running it again does nothing:
+# no private agents remain, and a loaded agent is left as it is.
+set -u
+
+# -x -f matches the whole command line, so launchd's own agent
+# ("/usr/bin/ssh-agent -l") never matches.
+/usr/bin/pkill -u "$(id -u)" -x -f 'ssh-agent -s' || true
+
+SSH_AUTH_SOCK="$(/bin/launchctl getenv SSH_AUTH_SOCK)"
+export SSH_AUTH_SOCK
+if ! /usr/bin/ssh-add -l >/dev/null 2>&1; then
+  /usr/bin/ssh-add --apple-load-keychain -q 2>/dev/null || true
+fi
+{{ end -}}

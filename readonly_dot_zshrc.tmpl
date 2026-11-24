@@ -12,8 +12,11 @@ ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
+{{- if ne .chezmoi.os "darwin" }}
+# macOS shares launchd's agent instead; see ~/.zsh.d/ssh-agent.sh.
 eval "$(ssh-agent -s)"
 ssh-add $HOME/.ssh/id_ed25519
+{{- end }}
 
 # Aliases
 alias k=kubectl

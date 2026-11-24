@@ -45,8 +45,11 @@ ssh-keygen -q -p -P "" -N "${passphrase}" -f "${work}/key" >/dev/null
 mv -f "${work}/key" "${key}"
 chmod 600 "${key}"
 
-# Store the passphrase in the login Keychain and load the key into the agent.
+# Store the passphrase in the login Keychain and load the key into launchd's
+# agent, which every process shares, never a shell's private one.
 # SSH_ASKPASS feeds the passphrase without a terminal prompt.
+SSH_AUTH_SOCK="$(/bin/launchctl getenv SSH_AUTH_SOCK)"
+export SSH_AUTH_SOCK
 printf '#!/bin/sh\nprintf "%%s\\n" "$SSH_KEY_PASSPHRASE"\n' > "${work}/askpass"
 chmod 700 "${work}/askpass"
 if SSH_KEY_PASSPHRASE="${passphrase}" SSH_ASKPASS="${work}/askpass" SSH_ASKPASS_REQUIRE=force \
