@@ -6,7 +6,7 @@ description: Run the security and staff-engineer reviews on a branch's unreviewe
 
 Every commit that leaves this machine passes two reviews first, `security-reviewer` and `staff-reviewer`. Each runs as its own Opus subagent with no view of this conversation. A `SubagentStop` hook reads each reviewer's verdict and stores it as a marker for the reviewed commit. A `PreToolUse` hook blocks `git push`, `gh pr create` and pull-request tools until the commit being pushed has a pass from both.
 
-The helper lives at `~/.claude/skills/review-changes/bin/review-gate`.
+The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After changing it, run `bin/test-review-gate`, a table of push commands and the decision each should get.
 
 ## Steps
 

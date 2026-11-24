@@ -54,12 +54,17 @@ def passed(repo, sha):
 
 
 def base_ref(repo):
-    ref = git(repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
-    if ref:
-        return ref
-    for cand in ("origin/main", "origin/master", "main", "master"):
-        if git(repo, "rev-parse", "--verify", "-q", cand + "^{commit}"):
-            return cand
+    """The remote default branch. Local branches never count: when HEAD is local
+    main, its merge-base with itself would hide every unpushed commit."""
+    remotes = (git(repo, "remote") or "").split()
+    remotes.sort(key=lambda r: r != "origin")
+    for r in remotes:
+        ref = git(repo, "symbolic-ref", "-q", "--short", f"refs/remotes/{r}/HEAD")
+        if ref:
+            return ref
+        for b in ("main", "master"):
+            if git(repo, "rev-parse", "--verify", "-q", f"refs/remotes/{r}/{b}^{{commit}}"):
+                return f"{r}/{b}"
     return None
 
 
@@ -87,9 +92,10 @@ def status(repo, head="HEAD"):
 
 # ---------------------------------------------------------------- record
 
-def report_texts(payload):
-    """Candidate report texts, newest last: the transcript, then the final message."""
-    texts = []
+def final_report(payload):
+    """The report the reviewer delivered: its last SubagentHandback message when it
+    used one, otherwise its final assistant message. Earlier drafts never count."""
+    handback = None
     tp = payload.get("agent_transcript_path")
     if tp:
         try:
@@ -102,25 +108,23 @@ def report_texts(payload):
                 if msg.get("role") != "assistant" or not isinstance(content, list):
                     continue
                 for block in content:
-                    if block.get("type") == "text":
-                        texts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
+                    if block.get("type") == "tool_use" and block.get("name") == "SubagentHandback":
                         m = (block.get("input") or {}).get("message")
                         if isinstance(m, str):
-                            texts.append(m)
+                            handback = m
         except OSError:
             pass
-    texts.append(payload.get("last_assistant_message") or "")
-    return texts
+    return handback if handback is not None else (payload.get("last_assistant_message") or "")
 
 
 def parse(text):
     def field(name):
         m = re.search(rf"^\s*`*{name}:\s*`*([^\s`]+)", text, re.M)
         return m.group(1) if m else None
-    verdict = field("VERDICT")
-    if verdict not in ("pass", "fix-required"):
+    m = re.search(r"^\s*`*VERDICT:\s*(pass|fix-required)\s*`*\s*$", text, re.M)
+    if not m:
         return None
+    verdict = m.group(1)
     return {"repo": field("REPO"), "sha": field("REVIEWED"), "verdict": verdict}
 
 
@@ -128,14 +132,11 @@ def record(payload):
     role = ROLES.get(payload.get("agent_type") or "")
     if not role:
         return 0
-    found = None
-    for text in reversed(report_texts(payload)):
-        found = parse(text)
-        if found:
-            break
+    found = parse(final_report(payload))
     problem = None
     if not found:
-        problem = "no REPO, REVIEWED and VERDICT header lines in the report"
+        problem = ("no REPO, REVIEWED and VERDICT header lines in the report, or VERDICT is not "
+                   "exactly pass or fix-required")
     else:
         repo = toplevel(found["repo"]) or toplevel(payload.get("cwd"))
         sha = repo and found["sha"] and git(repo, "rev-parse", "--verify", "-q", found["sha"] + "^{commit}")
@@ -180,6 +181,8 @@ def push_targets(cmd, cwd):
             words = words[1:]
         if words[:1] == ["rtk"]:
             words = words[1:]
+        words = [w.lstrip("(").rstrip(")") for w in words]
+        words = [w for w in words if w]
         if len(words) >= 2 and words[0] == "cd":
             cur = os.path.normpath(os.path.join(cur, os.path.expanduser(words[1])))
             continue
@@ -204,15 +207,34 @@ def push_targets(cmd, cwd):
             continue
         pos = [a for a in args if not a.startswith("-")]
         refspecs = pos[1:]
-        if not refspecs:
-            if "--tags" not in args:
-                out.append((d, "HEAD"))
-            continue
+        if "--all" in args or "--mirror" in args or "--branches" in args:
+            out.append((d, "refs/heads"))
+        if "--tags" in args or "--follow-tags" in args or "--mirror" in args:
+            out.append((d, "refs/tags"))
+        if not refspecs and not ({"--all", "--mirror", "--branches", "--tags"} & set(args)):
+            out.append((d, "HEAD"))
         for spec in refspecs:
             src = spec.lstrip("+").split(":", 1)[0]
-            if src:
+            if "*" in src:
+                out.append((d, "refs/heads" if "tags" not in src else "refs/tags"))
+            elif src:
                 out.append((d, src))
     return out
+
+
+def expand(repo, rev):
+    """Commits a target would push. A ref namespace expands to its refs that hold
+    commits no remote has yet. None means the target cannot be resolved."""
+    if rev in ("refs/heads", "refs/tags"):
+        refs = (git(repo, "for-each-ref", "--format=%(refname)", rev) or "").split()
+        shas = []
+        for ref in refs:
+            sha = git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}")
+            if sha and git(repo, "rev-list", "-1", sha, "--not", "--remotes"):
+                shas.append(sha)
+        return shas
+    sha = git(repo, "rev-parse", "--verify", "-q", rev + "^{commit}")
+    return [sha] if sha else None
 
 
 def deny(reason):
@@ -234,6 +256,9 @@ def gate(payload):
         if not re.search(r"\bgit\b.*\bpush\b|\bgh\s+pr\s+create\b", cmd):
             return 0
         targets = push_targets(cmd, cwd)
+        wrapped = re.search(r"\b(?:ba|z)?sh\s+-c\b|\beval\b|\bxargs\b|\benv\b|\bcommand\b|/git\s", cmd)
+        if not targets and wrapped and not re.search(r"--delete\b|\s-d\b", cmd):
+            targets = [(cwd, "HEAD")]  # a push inside sh -c, eval, env...: check the cwd
     elif re.search(r"pull_request_create$", tool):
         where = next((inp[k] for k in ("cwd", "repoPath", "repo_path", "worktreePath") if isinstance(inp.get(k), str)), cwd)
         targets = [(where, "HEAD")]
@@ -244,14 +269,16 @@ def gate(payload):
         repo = toplevel(d)
         if not repo:
             continue
-        sha = git(repo, "rev-parse", "--verify", "-q", rev + "^{commit}")
-        if not sha:
+        shas = expand(repo, rev)
+        if shas is None:
+            blocked.append(f"{repo}: cannot resolve {rev!r} to a commit, so it cannot be checked")
             continue
-        st = status(repo, sha)
-        if st["needs_review"]:
-            m = load(repo, sha)
-            got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
-            blocked.append(f"{repo} at {sha[:12]} ({got}; review range {(st['review_from'] or '')[:12] or 'root'}..{sha[:12]})")
+        for sha in shas:
+            st = status(repo, sha)
+            if st["needs_review"]:
+                m = load(repo, sha)
+                got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
+                blocked.append(f"{repo} at {sha[:12]} ({got}; review range {(st['review_from'] or '')[:12] or 'root'}..{sha[:12]})")
     if not blocked:
         return 0
     return deny("Blocked by review-gate: these commits have not passed both the security and the staff review: "
