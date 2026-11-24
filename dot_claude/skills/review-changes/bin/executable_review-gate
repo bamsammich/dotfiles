@@ -20,6 +20,7 @@ import shlex
 import subprocess
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 
 ROLES = {"security-reviewer": "security", "staff-reviewer": "staff"}
@@ -36,6 +37,7 @@ def toplevel(path):
     return git(path, "rev-parse", "--show-toplevel") if path and os.path.isdir(path) else None
 
 
+@lru_cache(maxsize=None)
 def marker_dir(repo):
     d = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
     return Path(d) / "review-gate"
@@ -75,8 +77,8 @@ def status(repo, head="HEAD"):
                 "review_from": None, "passed": False, "needs_review": False}
     ref = base_ref(repo)
     base = git(repo, "merge-base", head, ref) if ref else None
-    span = f"{base}..{head}" if base else head
-    shas = (git(repo, "rev-list", "--max-count=500", span) or "").split()
+    span = [f"{base}..{head}"] if base else [head, "--not", "--remotes"]
+    shas = (git(repo, "rev-list", "--max-count=500", *span) or "").split()
     last = next((s for s in shas if passed(repo, s)), None)
     return {
         "repo": repo,
@@ -119,7 +121,7 @@ def final_report(payload):
 
 def parse(text):
     def field(name):
-        m = re.search(rf"^\s*`*{name}:\s*`*([^\s`]+)", text, re.M)
+        m = re.search(rf"^\s*`*{name}:\s*`*([^`\n]+?)`*\s*$", text, re.M)
         return m.group(1) if m else None
     m = re.search(r"^\s*`*VERDICT:\s*(pass|fix-required)\s*`*\s*$", text, re.M)
     if not m:
@@ -189,16 +191,37 @@ class Unresolved(Exception):
     pass
 
 
+def mask_quotes(cmd):
+    """cmd with every quoted character except newlines replaced by x, so a
+    search for shell syntax skips quoted text and lines still line up."""
+    out, state, i = [], None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if state is None and c == "\\" and i + 1 < len(cmd):
+            out.append(cmd[i:i + 2]); i += 2
+            continue
+        if state is None and c in "'\"":
+            state = c
+        elif state == c:
+            state = None
+        elif state and c != "\n":
+            c = "x"
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def split_heredocs(cmd):
     """Drop heredoc bodies, which are data. A body fed to a shell is code, so
     those bodies come back separately to be parsed."""
     out, code, lines, i = [], [], cmd.split("\n"), 0
+    masked = mask_quotes(cmd).split("\n")
     while i < len(lines):
-        line = lines[i]
+        line, bare = lines[i], masked[i]
         out.append(line)
         i += 1
-        m = HEREDOC.search(line) if "<<<" not in line else None
-        if m and line[:m.start()].count("$((") > line[:m.start()].count("))"):
+        m = HEREDOC.search(bare) if "<<<" not in bare else None
+        if m and bare[:m.start()].count("((") > bare[:m.start()].count("))"):
             m = None  # a shift inside $(( )), not a heredoc
         if not m:
             continue
@@ -302,6 +325,10 @@ def push_args(d, args, cfg):
     pos, i = [], 0
     while i < len(args):
         a = args[i]
+        if a.startswith("--repo="):
+            pos.insert(0, a.split("=", 1)[1])
+            i += 1
+            continue
         if a in GIT_VALUE_OPTS and i + 1 < len(args):
             if a == "--repo":
                 pos.insert(0, args[i + 1])

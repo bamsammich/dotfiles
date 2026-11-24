@@ -3,7 +3,9 @@
 # origin, a reviewed branch and an unreviewed one, then checks each command's
 # allow/deny decision. Run it after any change to review-gate.
 set -u
-G="$(dirname "$0")/review-gate"
+# Works deployed (review-gate beside it) and from the chezmoi source
+# (executable_review-gate beside it).
+G="$(dirname "$0")/review-gate"; [ -x "$G" ] || G="$(dirname "$0")/executable_review-gate"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false \
   GIT_CONFIG_KEY_1=tag.gpgsign GIT_CONFIG_VALUE_1=false
@@ -76,6 +78,9 @@ check allow "git push -u origin \"\$(git branch --show-current)\" && echo \"push
 check deny  "echo \"on \$(git branch --show-current)\" && git push origin unreviewed && echo \"pushed \$(git branch --show-current)\""
 check deny  "echo \"Branch: \$(git branch --show-current)\"; git push origin unreviewed; echo \"Root: \$(git rev-parse --show-toplevel)\""
 check deny  "$(printf 'x=$(echo $((a<<b)))\ngit push origin unreviewed')"
+check deny  "$(printf '(( n = 1 << shift ))\ngit push origin unreviewed')"
+check deny  "$(printf 'git commit -m \"explain <<EOF syntax\"\ngit push origin unreviewed')"
+check deny  "git push --repo=origin unreviewed"
 check deny  "git --git-dir=$W/.git --work-tree=$T/origin push origin unreviewed" "$T"
 check deny  "pushd $W && git push origin unreviewed" "$T"
 check deny  "if cd $W; then git push origin unreviewed; fi" "$T"
