@@ -166,92 +166,108 @@ def record(payload):
 # ---------------------------------------------------------------- gate
 #
 # The gate does not try to understand every shell construct. It tokenizes the
-# command with shlex, finds each `git ... push` and `gh ... pr create` by
-# looking for the git or gh word anywhere in a segment (so `timeout 60`,
-# `nohup`, `env`, `/usr/bin/git` and similar prefixes do not hide a push),
-# parses nested `sh -c` and `eval` strings, and denies whatever it cannot
-# resolve. Heredoc bodies are dropped first, because they are data.
+# command with shlex and finds each `git ... push` and `gh ... pr create` by
+# looking for the git or gh word anywhere in a segment, so prefixes such as
+# `timeout 60`, `nohup` or `/usr/bin/git` do not hide a push. It follows push
+# aliases, nested `sh -c` and `eval` strings, `$( )` and backtick
+# substitutions, and heredocs fed to a shell. Other heredoc bodies are data
+# and are dropped. Anything it cannot resolve is denied.
 
 PUSH_HINT = re.compile(r"\bgit\b[\s\S]*\bpush\b|\bgh\b[\s\S]*\bpr\b[\s\S]*\bcreate\b")
+ANY_GIT = re.compile(r"\b(?:git|gh)\b")
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "eval"}
-OPS = set(";&|()<>`") | {"&&", "||", ";;", "|&", "$("}
+PUNCT = ";&|()<>"
+# Words that can stand before a command in a segment without changing which
+# command runs.
+PREFIX = {"if", "then", "do", "else", "elif", "while", "until", "!", "{", "time", "nohup",
+          "exec", "command", "builtin", "nice", "sudo", "env", "xargs", "timeout"}
+GIT_VALUE_OPTS = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+HEREDOC = re.compile(r"(?<![<$(\w])<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
 
 
 class Unresolved(Exception):
     pass
 
 
-def strip_heredocs(cmd):
-    out, lines, i = [], cmd.split("\n"), 0
+def split_heredocs(cmd):
+    """Drop heredoc bodies, which are data. A body fed to a shell is code, so
+    those bodies come back separately to be parsed."""
+    out, code, lines, i = [], [], cmd.split("\n"), 0
     while i < len(lines):
         line = lines[i]
         out.append(line)
-        m = re.search(r"<<-?\s*(['\"]?)(\w+)\1", line)
         i += 1
-        if m:
-            end = m.group(2)
-            while i < len(lines) and lines[i].strip() != end:
-                i += 1
-            i += 1
-    return "\n".join(out)
+        m = HEREDOC.search(line) if "<<<" not in line else None
+        if not m:
+            continue
+        body = []
+        while i < len(lines) and lines[i].strip() != m.group(2):
+            body.append(lines[i]); i += 1
+        i += 1
+        words = re.findall(r"[\w./-]+", line[:m.start()])
+        if any(os.path.basename(w) in SHELLS for w in words):
+            code.append("\n".join(body))
+    return "\n".join(out), code
 
 
 def segments(cmd):
-    cmd = strip_heredocs(cmd).replace("\\\n", " ").replace("\n", " ; ")
-    lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|()<>")
+    cmd = cmd.replace("\\\n", " ").replace("\n", " ; ")
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=PUNCT)
     lex.whitespace_split = True
     lex.commenters = ""
     seg = []
     for tok in lex:  # raises ValueError on unbalanced quotes
-        if tok and set(tok) <= set(";&|()<>"):
+        if tok and set(tok) <= set(PUNCT):
             if seg:
                 yield seg
             seg = []
             continue
-        seg.append(tok.strip("`").removeprefix("$(") if tok.startswith(("`", "$(")) else tok.strip("`"))
+        # An unquoted backtick starts or ends a command. Inside a quoted word
+        # it stays text, as in a commit message that quotes `git push`.
+        if tok.startswith("`"):
+            if seg:
+                yield seg
+            seg, tok = [], tok[1:]
+        if tok.endswith("`"):
+            if tok[:-1]:
+                seg.append(tok[:-1])
+            if seg:
+                yield seg
+            seg = []
+            continue
+        if tok:
+            seg.append(tok)
     if seg:
         yield seg
 
 
-def base(word):
-    return os.path.basename(word)
-
-
 def resolve_dir(cur, path):
-    if "$" in path or "`" in path:
-        raise Unresolved(f"directory {path!r} uses a shell variable")
-    d = os.path.normpath(os.path.join(cur, os.path.expanduser(path)))
-    if not os.path.isdir(d):
-        raise Unresolved(f"directory {d!r} does not exist")
-    return d
+    """The directory a cd or -C names. A path that uses a variable or does not
+    exist yet comes back as is; a push from it is denied in check(), and any
+    other command from it is none of the gate's business."""
+    return os.path.normpath(os.path.join(cur, os.path.expanduser(path)))
 
 
-def git_push(seg, i, cur):
-    """seg[i] is a git word. Return targets if this invocation is a push, else None."""
-    rest, d, cfg = seg[i + 1:], cur, []
-    while rest and rest[0].startswith("-"):
-        a = rest[0]
-        if a == "-C" and len(rest) > 1:
-            d = resolve_dir(d, rest[1]); rest = rest[2:]
-        elif a == "-c" and len(rest) > 1:
-            cfg.append(rest[1]); rest = rest[2:]
-        elif a.startswith("--git-dir="):
-            g = resolve_dir(d, a.split("=", 1)[1])
-            d = os.path.dirname(g) if os.path.basename(g) == ".git" else g
-            rest = rest[1:]
-        elif a in ("--git-dir", "--work-tree", "--namespace") and len(rest) > 1:
-            if a == "--git-dir":
-                g = resolve_dir(d, rest[1])
-                d = os.path.dirname(g) if os.path.basename(g) == ".git" else g
-            rest = rest[2:]
-        else:
-            rest = rest[1:]
-    if rest[:1] != ["push"]:
-        return None
-    args = rest[1:]
+def gitdir_to_dir(cur, path):
+    g = resolve_dir(cur, path)
+    return os.path.dirname(g) if os.path.basename(g) == ".git" else g
+
+
+def push_args(d, args, cfg):
+    """Targets of `git push <args>` run in directory d."""
     if any(a in ("--delete", "-d") for a in args):
         return []
-    pos = [a for a in args if not a.startswith("-")]
+    pos, i = [], 0
+    while i < len(args):
+        a = args[i]
+        if a in GIT_VALUE_OPTS and i + 1 < len(args):
+            if a == "--repo":
+                pos.insert(0, args[i + 1])
+            i += 2
+            continue
+        if not a.startswith("-"):
+            pos.append(a)
+        i += 1
     remote, refspecs = (pos[0] if pos else None), pos[1:]
     out = []
     if {"--all", "--mirror", "--branches"} & set(args):
@@ -262,7 +278,8 @@ def git_push(seg, i, cur):
     if not refspecs and not out:
         repo = toplevel(d)
         if repo and not widened:
-            r = remote or git(repo, "config", f"branch.{git(repo, 'branch', '--show-current') or ''}.remote") or "origin"
+            br = git(repo, "branch", "--show-current") or ""
+            r = remote or git(repo, "config", f"branch.{br}.remote") or "origin"
             widened = bool(git(repo, "config", "--get-all", f"remote.{r}.push")) or \
                 git(repo, "config", "push.default") == "matching"
         out.append((d, "refs/heads" if widened else "HEAD"))
@@ -275,31 +292,101 @@ def git_push(seg, i, cur):
     return out
 
 
+def git_push(seg, i, d, depth):
+    """seg[i] is a git word. Return targets if this invocation pushes, else None."""
+    rest, cfg = seg[i + 1:], []
+    while rest and rest[0].startswith("-"):
+        a = rest[0]
+        if a == "-C" and len(rest) > 1:
+            d = resolve_dir(d, rest[1]); rest = rest[2:]
+        elif a == "-c" and len(rest) > 1:
+            cfg.append(rest[1]); rest = rest[2:]
+        elif a.startswith("--git-dir="):
+            d = gitdir_to_dir(d, a.split("=", 1)[1]); rest = rest[1:]
+        elif a in ("--git-dir", "--work-tree", "--namespace") and len(rest) > 1:
+            if a == "--git-dir":
+                d = gitdir_to_dir(d, rest[1])
+            rest = rest[2:]
+        else:
+            rest = rest[1:]
+    if not rest:
+        return None
+    sub, args = rest[0], rest[1:]
+    if sub != "push":
+        repo = toplevel(d)
+        alias = repo and git(repo, "config", "--get", f"alias.{sub}")
+        if not alias:
+            return None
+        if alias.startswith("!"):
+            return push_targets(alias[1:] + " " + " ".join(shlex.quote(a) for a in args), d, depth + 1) or None
+        words = shlex.split(alias)
+        if words[:1] != ["push"]:
+            return None
+        args = words[1:] + args
+    return push_args(d, args, cfg)
+
+
+def gh_pr_create(seg, i, d):
+    rest = seg[i + 1:]
+    while rest and rest[0].startswith("-"):
+        rest = rest[2:] if rest[0] in ("-R", "--repo", "--hostname") else rest[1:]
+    if rest[:2] != ["pr", "create"]:
+        return None
+    head = "HEAD"
+    args = rest[2:]
+    for j, a in enumerate(args):
+        if a in ("--head", "-H") and j + 1 < len(args):
+            head = args[j + 1]
+        elif a.startswith(("--head=", "-H=")):
+            head = a.split("=", 1)[1]
+    return [(d, head.split(":")[-1])]
+
+
+def substitutions(word):
+    """Command text inside $( ) within one shell word, as in out="$(git push)"."""
+    found = re.findall(r"\$\(([^()]*(?:\([^()]*\)[^()]*)*)\)", word)
+    if not found and "$(" in word:
+        found.append(word.split("$(", 1)[1])  # the tokenizer split it
+    return found
+
+
 def push_targets(cmd, cwd, depth=0):
     """(directory, rev) pairs a shell command would push or open a PR for."""
-    out, cur = [], cwd
+    if depth > 4:
+        raise Unresolved("commands nest too deeply")
+    cmd, code = split_heredocs(cmd)
+    out = []
+    for body in code:
+        out += push_targets(body, cwd, depth + 1)
+    cur = cwd
     for seg in segments(cmd):
+        for w in seg:
+            for sub in substitutions(w):
+                if ANY_GIT.search(sub):
+                    out += push_targets(sub, cur, depth + 1)
+        d = cur
         while seg and re.match(r"^[A-Za-z_]\w*=", seg[0]):
+            name, val = seg[0].split("=", 1)
+            if name == "GIT_DIR":
+                d = gitdir_to_dir(cur, val)
+            elif name == "GIT_WORK_TREE":
+                d = resolve_dir(cur, val)
             seg = seg[1:]
-        if not seg:
+        words = [os.path.basename(w) for w in seg]
+        k = 0
+        while k < len(words) and words[k] in PREFIX:
+            k += 1
+        if words[k:k + 1] in (["cd"], ["pushd"]) and len(seg) > k + 1:
+            cur = resolve_dir(cur, seg[k + 1])
             continue
-        if seg[0] == "cd" and len(seg) >= 2:
-            cur = resolve_dir(cur, seg[1])
-            continue
-        words = [base(w) for w in seg]
-        if depth < 3 and any(w in SHELLS for w in words):
+        if any(w in SHELLS for w in words):
             for w in seg:
-                if PUSH_HINT.search(w) and w not in SHELLS:
+                if ANY_GIT.search(w) and os.path.basename(w) not in SHELLS:
                     out += push_targets(w, cur, depth + 1)
         for i, w in enumerate(words):
-            if w == "git":
-                t = git_push(seg, i, cur)
-                if t is not None:
-                    out += t
-                    break
-            if w == "gh" and words[i + 1:i + 3] == ["pr", "create"]:
-                head = next((seg[j + 1] for j in range(i, len(seg) - 1) if seg[j] in ("--head", "-H")), "HEAD")
-                out.append((cur, head.split(":")[-1]))
+            t = git_push(seg, i, d, depth) if w == "git" else gh_pr_create(seg, i, d) if w == "gh" else None
+            if t is not None:
+                out += t
                 break
     return out
 
@@ -332,7 +419,9 @@ def check(targets):
     for d, rev in targets:
         repo = toplevel(d)
         if not repo:
-            continue  # not a git repository, so nothing of ours to push
+            blocked.append(f"{d} is not a git repository (or uses a shell variable), so the push "
+                           "cannot be checked; run it from inside the repository with literal paths")
+            continue
         shas = expand(repo, rev)
         if shas is None:
             blocked.append(f"{repo}: cannot resolve {rev!r} to a commit, so it cannot be checked")
@@ -355,7 +444,7 @@ def gate(payload):
     cwd = payload.get("cwd") or os.getcwd()
     if tool == "Bash":
         cmd = inp.get("command") or ""
-        if not PUSH_HINT.search(cmd):
+        if not ANY_GIT.search(cmd):
             return 0
         try:
             targets = push_targets(cmd, cwd)
@@ -363,6 +452,8 @@ def gate(payload):
             return deny(f"Blocked by review-gate: a push in this command cannot be checked ({e}). "
                         "Run the push from inside the repository, with literal paths.")
         except ValueError:
+            if not PUSH_HINT.search(cmd):
+                return 0
             return deny("Blocked by review-gate: this command mentions a push but could not be parsed "
                         "(unbalanced quotes?). Run the push as its own plain command.")
     elif re.search(r"pull_request_create$", tool):
