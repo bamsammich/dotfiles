@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Table test for review-gate's push detection. Builds a throwaway repo with an
+# origin, a reviewed branch and an unreviewed one, then checks each command's
+# allow/deny decision. Run it after any change to review-gate.
+set -u
+G="$(dirname "$0")/review-gate"
+T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false \
+  GIT_CONFIG_KEY_1=tag.gpgsign GIT_CONFIG_VALUE_1=false
+q() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
+git init -q -b main "$T/origin"; q "$T/origin" commit --allow-empty -m init
+git clone -q "$T/origin" "$T/w" 2>/dev/null; W="$T/w"
+q "$W" checkout -b reviewed; q "$W" commit --allow-empty -m r
+R="$(git -C "$W" rev-parse HEAD)"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$W" "$R" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record
+done
+q "$W" checkout -b unreviewed main; q "$W" commit --allow-empty -m u
+q "$W" tag -a v-unrev -m t; q "$W" checkout reviewed
+
+fails=0
+check() {  # expected command [cwd]
+  got="$(jq -n --arg c "$2" --arg cwd "${3:-$W}" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+    "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+  got="${got:-allow}"
+  if [ "$got" = "$1" ]; then echo "ok    $1  $2"; else echo "FAIL  want $1 got $got  $2"; fails=$((fails+1)); fi
+}
+check allow "git push -u origin reviewed"
+check allow "git status"
+check allow "git commit -m 'then git push later'"
+check allow "rtk git push"
+check allow "git push origin --delete unreviewed"
+check deny  "git push origin unreviewed"
+check deny  "git push origin unreviewed:refs/heads/x"
+check deny  "git -C $W push origin unreviewed"
+check deny  "cd $W && git push origin unreviewed"
+check deny  "(cd $W && git push origin unreviewed)"
+check deny  "git push --all origin"
+check deny  "git push origin --tags"
+check deny  "git push origin 'refs/heads/*:refs/heads/*'"
+check deny  "git push origin no-such-branch"
+q "$W" checkout unreviewed
+check deny  "git push"
+check deny  "sh -c 'git push'"
+check deny  "env FOO=1 git push"
+check deny  "gh pr create --draft"
+q "$W" checkout reviewed
+
+# A repo whose only remote is not origin, pushing local main with new commits.
+git init -q -b main "$T/up"; q "$T/up" commit --allow-empty -m init
+git clone -q -o upstream "$T/up" "$T/w2" 2>/dev/null; q "$T/w2" commit --allow-empty -m new
+check deny  "git push -u upstream main" "$T/w2"
+
+# record: an unfilled template line is not a pass.
+H="$(git -C "$W" rev-parse unreviewed)"
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass | fix-required\n' "$W" "$H" |
+  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:., stop_hook_active:true}' | "$G" record 2>/dev/null
+if [ -e "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review-gate/$H.json" ]; then
+  echo "FAIL  template VERDICT line was recorded"; fails=$((fails+1))
+else echo "ok    template VERDICT line not recorded"; fi
+
+echo; [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
