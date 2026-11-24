@@ -30,7 +30,7 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
 5. **Read the verdicts.** Run `review-gate status` again.
    - `passed: true` means both reviewers passed and the hook recorded them. Push.
-   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. The new range covers only the fix commits, and both reviewers run again on that range, in parallel.
+   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. Take the range from `status` again, never from memory. `review_from` moves only when a commit passes both reviews, so after a failed round it still points where the failed review started, and both reviewers run again on that whole range, in parallel. Giving them only the fix commits would record a pass for code nobody reviewed.
    - A reviewer passed but `status` shows no marker for it: the hook could not read the report header. Run that reviewer again.
 
 6. **Handle the rest.** Fix a `should-fix` finding when the fix is small and plainly right. Otherwise list it under a "Review notes" heading in the pull request description. Drop nits unless the fix is trivial.

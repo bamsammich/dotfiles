@@ -392,12 +392,17 @@ def push_args(d, args, cfg):
 KEEPS_REFS = {"status", "log", "diff", "show", "fetch", "add", "rm", "mv", "restore", "clean",
               "rev-parse", "remote", "config", "ls-files", "ls-remote", "describe", "blame", "grep",
               "shortlog", "show-ref", "for-each-ref", "rev-list", "cat-file", "help", "version",
-              "diff-tree", "diff-index", "merge-base", "name-rev", "reflog", "check-ignore", "stash"}
+              "diff-tree", "diff-index", "merge-base", "name-rev", "reflog", "check-ignore", "stash",
+              "worktree", "ls-tree", "cherry", "show-branch", "count-objects", "range-diff",
+              "check-attr", "submodule", "var", "whatchanged"}
 
 
 def moves_refs(sub, args):
     if sub == "branch":
         return any(a in ("-f", "--force", "-m", "-M", "-c", "-C") for a in args)
+    if sub == "tag":
+        return not args or not any(a in ("-l", "--list", "-v", "--verify") or a.startswith("--list")
+                                   for a in args)
     return sub not in KEEPS_REFS
 
 
@@ -526,7 +531,7 @@ def push_targets(cmd, cwd, depth=0):
                     raise Unresolved(f"{changed!r} runs before the push in the same command and may "
                                      "create the commit being pushed, which the gate cannot see yet")
                 out += t
-            elif sub and w == "git" and moves_refs(sub, seg[i + 2:]):
+            elif sub and sub != "push" and w == "git" and moves_refs(sub, seg[seg.index(sub, i) + 1:] if sub in seg[i:] else []):
                 changed = f"git {sub}"
             if sub:
                 break
