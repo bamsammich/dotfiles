@@ -182,7 +182,7 @@ PUNCT = ";&|()<>"
 PREFIX = {"if", "then", "do", "else", "elif", "while", "until", "!", "{", "time", "nohup",
           "exec", "command", "builtin", "nice", "sudo", "env", "xargs", "timeout"}
 GIT_VALUE_OPTS = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
-HEREDOC = re.compile(r"(?<![<$(\w])<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
+HEREDOC = re.compile(r"(?<![<$(])<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
 
 
 class Unresolved(Exception):
@@ -204,13 +204,49 @@ def split_heredocs(cmd):
         while i < len(lines) and lines[i].strip() != m.group(2):
             body.append(lines[i]); i += 1
         i += 1
-        words = re.findall(r"[\w./-]+", line[:m.start()])
+        words = re.findall(r"[\w./-]+", line)
         if any(os.path.basename(w) in SHELLS for w in words):
             code.append("\n".join(body))
     return "\n".join(out), code
 
 
+COMMON_CAPTURES = [
+    # $(...) forms whose value the gate knows without running them.
+    (re.compile(r"\"?\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD)\s*\)\"?"), "HEAD"),
+    (re.compile(r"\"?\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)\"?"), "."),
+]
+
+
+def quiet_single_quotes(cmd):
+    """Inside single quotes, $( and backticks are text. Break them up so no later
+    step reads them as commands."""
+    out, state, i = [], None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if state == "'":
+            if c == "'":
+                state = None
+            elif c == "`" or (c == "$" and cmd[i + 1:i + 2] == "("):
+                c = "\x01"
+        elif c == "\\" and i + 1 < len(cmd):
+            out.append(cmd[i:i + 2]); i += 2
+            continue
+        elif state == '"':
+            if c == '"':
+                state = None
+        elif c in "'\"":
+            state = c
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def segments(cmd):
+    """Token lists, one per simple command. A subshell's ( and ) come back as
+    the one-token lists ["("] and [")"]."""
+    cmd = quiet_single_quotes(cmd)
+    for rx, value in COMMON_CAPTURES:
+        cmd = rx.sub(value, cmd)
     cmd = cmd.replace("\\\n", " ").replace("\n", " ; ")
     lex = shlex.shlex(cmd, posix=True, punctuation_chars=PUNCT)
     lex.whitespace_split = True
@@ -221,6 +257,9 @@ def segments(cmd):
             if seg:
                 yield seg
             seg = []
+            for ch in tok:
+                if ch in "()":
+                    yield [ch]
             continue
         # An unquoted backtick starts or ends a command. Inside a quoted word
         # it stays text, as in a commit message that quotes `git push`.
@@ -303,9 +342,13 @@ def git_push(seg, i, d, depth):
             cfg.append(rest[1]); rest = rest[2:]
         elif a.startswith("--git-dir="):
             d = gitdir_to_dir(d, a.split("=", 1)[1]); rest = rest[1:]
+        elif a.startswith("--work-tree="):
+            d = resolve_dir(d, a.split("=", 1)[1]); rest = rest[1:]
         elif a in ("--git-dir", "--work-tree", "--namespace") and len(rest) > 1:
             if a == "--git-dir":
                 d = gitdir_to_dir(d, rest[1])
+            elif a == "--work-tree":
+                d = resolve_dir(d, rest[1])
             rest = rest[2:]
         else:
             rest = rest[1:]
@@ -358,26 +401,39 @@ def push_targets(cmd, cwd, depth=0):
     out = []
     for body in code:
         out += push_targets(body, cwd, depth + 1)
-    cur = cwd
+    cur, stack = cwd, []
     for seg in segments(cmd):
+        if seg == ["("]:
+            stack.append(cur)
+            continue
+        if seg == [")"]:
+            cur = stack.pop() if stack else cur
+            continue
         for w in seg:
             for sub in substitutions(w):
                 if ANY_GIT.search(sub):
                     out += push_targets(sub, cur, depth + 1)
-        d = cur
-        while seg and re.match(r"^[A-Za-z_]\w*=", seg[0]):
-            name, val = seg[0].split("=", 1)
-            if name == "GIT_DIR":
-                d = gitdir_to_dir(cur, val)
-            elif name == "GIT_WORK_TREE":
-                d = resolve_dir(cur, val)
-            seg = seg[1:]
-        words = [os.path.basename(w) for w in seg]
-        k = 0
-        while k < len(words) and words[k] in PREFIX:
+        d, k = cur, 0
+        while k < len(seg):
+            if re.match(r"^[A-Za-z_]\w*=", seg[k]):
+                name, val = seg[k].split("=", 1)
+                if name == "GIT_DIR":
+                    d = gitdir_to_dir(cur, val)
+                elif name == "GIT_WORK_TREE":
+                    d = resolve_dir(cur, val)
+            elif os.path.basename(seg[k]) not in PREFIX:
+                break
             k += 1
-        if words[k:k + 1] in (["cd"], ["pushd"]) and len(seg) > k + 1:
+        words = [os.path.basename(w) for w in seg]
+        if words[k:k + 1] == ["cd"] and len(seg) > k + 1:
             cur = resolve_dir(cur, seg[k + 1])
+            continue
+        if words[k:k + 1] == ["pushd"] and len(seg) > k + 1:
+            stack.append(cur)
+            cur = resolve_dir(cur, seg[k + 1])
+            continue
+        if words[k:k + 1] == ["popd"]:
+            cur = stack.pop() if stack else cur
             continue
         if any(w in SHELLS for w in words):
             for w in seg:
@@ -415,16 +471,17 @@ def deny(reason):
 
 
 def check(targets):
-    blocked = []
+    """(unreviewed, unchecked): commits that need review, and targets the gate
+    cannot resolve at all."""
+    blocked, unchecked = [], []
     for d, rev in targets:
         repo = toplevel(d)
         if not repo:
-            blocked.append(f"{d} is not a git repository (or uses a shell variable), so the push "
-                           "cannot be checked; run it from inside the repository with literal paths")
+            unchecked.append(f"{d} is not a git repository")
             continue
         shas = expand(repo, rev)
         if shas is None:
-            blocked.append(f"{repo}: cannot resolve {rev!r} to a commit, so it cannot be checked")
+            unchecked.append(f"{rev!r} in {repo} does not resolve to a commit")
             continue
         for sha in shas:
             st = status(repo, sha)
@@ -433,7 +490,7 @@ def check(targets):
                 got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
                 blocked.append(f"{repo} at {sha[:12]} ({got}; review range "
                                f"{(st['review_from'] or '')[:12] or 'root'}..{sha[:12]})")
-    return blocked
+    return blocked, unchecked
 
 
 def gate(payload):
@@ -462,7 +519,12 @@ def gate(payload):
         targets = [(where, "HEAD")]
     else:
         return 0
-    blocked = check(targets)
+    blocked, unchecked = check(targets)
+    if unchecked:
+        return deny("Blocked by review-gate: this push cannot be checked, because "
+                    + "; ".join(unchecked)
+                    + ". Shell variables and $( ) are not expanded. Run the push from inside the "
+                    "repository with a literal branch name.")
     if not blocked:
         return 0
     return deny("Blocked by review-gate: these commits have not passed both the security and the staff review: "
