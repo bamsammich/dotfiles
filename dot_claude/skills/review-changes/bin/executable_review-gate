@@ -374,6 +374,9 @@ def push_args(d, args, cfg):
             widened = bool(git(repo, "config", "--get-all", f"remote.{r}.push")) or \
                 git(repo, "config", "push.default") == "matching"
         out.append((d, "refs/heads" if widened else "HEAD"))
+    refspecs = [f"refs/tags/{refspecs[j + 1]}" if r == "tag" and j + 1 < len(refspecs) else r
+                for j, r in enumerate(refspecs) if not (j > 0 and refspecs[j - 1] == "tag")]
+    refspecs = [r for r in refspecs if r != "tag"]
     for spec in refspecs:
         src = spec.lstrip("+").split(":", 1)[0]
         if spec.lstrip("+") == ":" or "*" in src:
@@ -383,8 +386,24 @@ def push_args(d, args, cfg):
     return out
 
 
+# git subcommands that never move a branch or tag. Any other git command
+# before a push in the same shell command may create the commit being pushed,
+# which the gate cannot see when the hook runs.
+KEEPS_REFS = {"status", "log", "diff", "show", "fetch", "add", "rm", "mv", "restore", "clean",
+              "rev-parse", "remote", "config", "ls-files", "ls-remote", "describe", "blame", "grep",
+              "shortlog", "show-ref", "for-each-ref", "rev-list", "cat-file", "help", "version",
+              "diff-tree", "diff-index", "merge-base", "name-rev", "reflog", "check-ignore", "stash"}
+
+
+def moves_refs(sub, args):
+    if sub == "branch":
+        return any(a in ("-f", "--force", "-m", "-M", "-c", "-C") for a in args)
+    return sub not in KEEPS_REFS
+
+
 def git_push(seg, i, d, depth):
-    """seg[i] is a git word. Return targets if this invocation pushes, else None."""
+    """seg[i] is a git word. Return (subcommand, targets): targets when this
+    invocation pushes, else None."""
     rest, cfg, gitdir = seg[i + 1:], [], False
     while rest and rest[0].startswith("-"):
         a = rest[0]
@@ -407,20 +426,21 @@ def git_push(seg, i, d, depth):
         else:
             rest = rest[1:]
     if not rest:
-        return None
+        return None, None
     sub, args = rest[0], rest[1:]
     if sub != "push":
         repo = toplevel(d)
         alias = repo and git(repo, "config", "--get", f"alias.{sub}")
         if not alias:
-            return None
+            return sub, None
         if alias.startswith("!"):
-            return push_targets(alias[1:] + " " + " ".join(shlex.quote(a) for a in args), d, depth + 1) or None
+            t = push_targets(alias[1:] + " " + " ".join(shlex.quote(a) for a in args), d, depth + 1)
+            return "alias", t or None
         words = shlex.split(alias)
         if words[:1] != ["push"]:
-            return None
+            return (words[0] if words else sub), None
         args = words[1:] + args
-    return push_args(d, args, cfg)
+    return "push", push_args(d, args, cfg)
 
 
 def gh_pr_create(seg, i, d):
@@ -455,7 +475,7 @@ def push_targets(cmd, cwd, depth=0):
     out = []
     for body in code:
         out += push_targets(body, cwd, depth + 1)
-    cur, stack = cwd, []
+    cur, stack, changed = cwd, [], None
     for seg in segments(cmd):
         if seg == ["("]:
             stack.append(cur)
@@ -495,9 +515,20 @@ def push_targets(cmd, cwd, depth=0):
                 if ANY_GIT.search(w) and os.path.basename(w) not in SHELLS:
                     out += push_targets(w, cur, depth + 1)
         for i, w in enumerate(words):
-            t = git_push(seg, i, d, depth) if w == "git" else gh_pr_create(seg, i, d) if w == "gh" else None
-            if t is not None:
+            if w == "git":
+                sub, t = git_push(seg, i, d, depth)
+            elif w == "gh":
+                sub, t = "gh", gh_pr_create(seg, i, d)
+            else:
+                continue
+            if t:
+                if changed:
+                    raise Unresolved(f"{changed!r} runs before the push in the same command and may "
+                                     "create the commit being pushed, which the gate cannot see yet")
                 out += t
+            elif sub and w == "git" and moves_refs(sub, seg[i + 2:]):
+                changed = f"git {sub}"
+            if sub:
                 break
     return out
 
@@ -562,7 +593,8 @@ def gate(payload):
             targets = push_targets(cmd, cwd)
         except Unresolved as e:
             return deny(f"Blocked by review-gate: a push in this command cannot be checked ({e}). "
-                        "Run the push from inside the repository, with literal paths.")
+                        "Run the push as a command of its own, from inside the repository, with "
+                        "literal paths and branch names.")
         except ValueError:
             if not PUSH_HINT.search(cmd):
                 return 0
@@ -572,7 +604,16 @@ def gate(payload):
     elif re.search(r"(pull_request_create|create_pull_request)$", tool):
         where = next((inp[k] for k in ("cwd", "repoPath", "repo_path", "worktreePath")
                       if isinstance(inp.get(k), str)), cwd)
-        targets = [(where, "HEAD")]
+        head = next((inp[k] for k in ("head", "headBranch", "head_branch", "branch")
+                     if isinstance(inp.get(k), str) and inp[k]), None)
+        repo = toplevel(where)
+        if head:
+            head = head.split(":")[-1]
+            # A head branch this checkout does not have was pushed from elsewhere,
+            # and that push went through the gate.
+            if not repo or not git(repo, "rev-parse", "--verify", "-q", head + "^{commit}"):
+                return 0
+        targets = [(where, head or "HEAD")]
     else:
         return 0
     blocked, unchecked = check(targets)

@@ -72,7 +72,7 @@ check allow "cd \"\$(git rev-parse --show-toplevel)\" && git push -u origin revi
 check allow "$(printf 'cat<<EOF > notes.md\nrun git push origin no-such-branch\nEOF')"
 check deny  "$(printf 'cat <<EOF | bash\ngit push origin unreviewed\nEOF')"
 check deny  "git push -u origin \"\$BRANCH\""
-check allow "git commit -m \"Update \$(git branch --show-current)\" && git push -u origin reviewed"
+check allow "git log -1 --format=\"Update \$(git branch --show-current)\" && git push -u origin reviewed"
 check allow "gh pr create --title \"Fix \$(git branch --show-current)\" --body x"
 check allow "git push -u origin \"\$(git branch --show-current)\" && echo \"pushed \$(git branch --show-current)\""
 check deny  "echo \"on \$(git branch --show-current)\" && git push origin unreviewed && echo \"pushed \$(git branch --show-current)\""
@@ -88,6 +88,11 @@ check allow "git push -u origin reviewed 2>&1"
 check allow "git push -u origin reviewed > /dev/null 2>&1"
 q "$W" checkout unreviewed
 check deny  "git push 2>&1 | tail -5"
+check deny  "git commit --allow-empty -m x && git push -u origin reviewed"
+check deny  "git add -A && git commit -m 'Fix review note' && git push"
+check deny  "git pull --rebase && git push"
+check allow "git status && git log --oneline -3 && git push -u origin reviewed"
+check allow "git fetch && git branch --show-current && git push origin reviewed"
 q "$W" checkout reviewed
 check deny  "git --git-dir=$W/.git --work-tree=$T/origin push origin unreviewed" "$T"
 check deny  "pushd $W && git push origin unreviewed" "$T"
@@ -133,10 +138,19 @@ if [ -e "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review
   echo "FAIL  template VERDICT line was recorded"; fails=$((fails+1))
 else echo "ok    template VERDICT line not recorded"; fi
 
-got="$(jq -n --arg cwd "$W" '{tool_name:"mcp__github__create_pull_request",tool_input:{},cwd:$cwd}' | "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+mcp() {  # expected tool_input-json [cwd]
+  got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
+    "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+  got="${got:-allow}"
+  if [ "$got" = "$1" ]; then echo "ok    $1  mcp $2"; else echo "FAIL  want $1 got $got  mcp $2"; fails=$((fails+1)); fi
+}
+mcp allow '{}'
+mcp deny  '{"head":"unreviewed"}'
+mcp allow '{"head":"pushed-elsewhere"}'
+mcp allow '{"head":"o:feature"}' "$T"
 q "$W" checkout unreviewed
-got="$(jq -n --arg cwd "$W" '{tool_name:"mcp__github__create_pull_request",tool_input:{},cwd:$cwd}' | "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+mcp deny  '{}'
+mcp allow '{"head":"reviewed"}'
 q "$W" checkout reviewed
-if [ "$got" = deny ]; then echo "ok    deny  mcp create_pull_request"; else echo "FAIL  mcp create_pull_request got $got"; fails=$((fails+1)); fi
 
 echo; [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
