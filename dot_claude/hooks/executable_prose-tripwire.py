@@ -108,13 +108,6 @@ def off() -> bool:
     return (CLAUDE_DIR / ".prose-rules-off").exists()
 
 
-def crew_builder(d: dict) -> bool:
-    """A crew builder model (DeepSeek, a local model) is working in this cwd.
-    crew worktrees hold a .crew/ directory; prose rules do not apply there."""
-    cwd = d.get("cwd") or ""
-    return bool(cwd) and (Path(cwd) / ".crew" / "meta.json").exists()
-
-
 def read_payload() -> dict:
     try:
         return json.load(sys.stdin)
@@ -358,8 +351,6 @@ def main() -> int:
     if len(sys.argv) < 2 or off():
         return 0
     d = read_payload()
-    if crew_builder(d):
-        return 0
     sub = sys.argv[1]
     try:
         if sub == "stop":

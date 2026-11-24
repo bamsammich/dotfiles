@@ -1,0 +1,13 @@
+# Targets chezmoi deletes on apply. The linear-build skill and its crew
+# tooling were retired; listing them here removes them from every machine.
+.claude/skills/linear-build
+.claude/agents/crew-critic.md
+.claude/agents/crew-qa.md
+.claude/agents/crew-security.md
+.claude/agents/crew-staff.md
+.claude/hooks/crew-activity.sh
+.claude/hooks/linear-build-hint.sh
+.config/herdr-app/layouts/crew.json
+.config/herdr-app/layouts/.state/crew.json
+.config/herdr-app/mods/crew-board
+.config/herdr-app/mods/claude-chat
