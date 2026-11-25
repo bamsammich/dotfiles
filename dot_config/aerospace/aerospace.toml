@@ -308,6 +308,13 @@ if.app-id = 'com.splashtop.stb.macosx'
 if.window-title-regex-substring = '.'
 run = 'layout floating'
 
+# --- grandMA3 onPC: float so AeroSpace never resizes it ---
+# At onPC display scale 0.75, AeroSpace and onPC kept resizing the window
+# against each other, and the screen flashed until a full redraw.
+[[on-window-detected]]
+if.app-name-regex-substring = 'grandMA3'
+run = 'layout floating'
+
 # ===========================================================================
 # Workspace Assignments
 # ===========================================================================
