@@ -112,7 +112,7 @@ def failed_markers(repo):
     return out
 
 
-def standing_findings(repo, unreviewed):
+def standing_findings(repo, unreviewed, pids=None):
     """{role: [failed commit]} for every fix-required that bears on the
     unreviewed commits: one recorded on an unreviewed commit, or on any commit
     whose patch matches one of them, so a rebase or an amend that keeps the
@@ -120,7 +120,8 @@ def standing_findings(repo, unreviewed):
     out = {}
     if not unreviewed:
         return out
-    branch_pids = {own_patch_id(repo, s) for s in unreviewed} - {None}
+    pids = pids or {}
+    branch_pids = {pids.get(s) or own_patch_id(repo, s) for s in unreviewed} - {None}
     for sha, failed in failed_markers(repo):
         check_deadline()
         if sha in unreviewed or own_patch_id(repo, sha) in branch_pids:
@@ -168,12 +169,18 @@ def round_roles(repo, unreviewed, findings=None):
     return [r for r in FULL if r in roles]
 
 
-@lru_cache(maxsize=None)
-def trees(repo, sha):
-    """(parent tree, own tree). Patch ids ignore line numbers, so the same hunk
-    placed elsewhere in a file shares a patch id; the own tree tells them apart."""
-    return (git(repo, "rev-parse", "-q", "--verify", f"{sha}^^{{tree}}"),
-            git(repo, "rev-parse", "-q", "--verify", f"{sha}^{{tree}}"))
+def trees(repo, shas):
+    """{sha: (parent tree, own tree)} in two git calls. Patch ids ignore line
+    numbers, so the same hunk placed elsewhere in a file shares a patch id; the
+    own tree tells them apart. A root commit has no parent tree."""
+    def log(revs):
+        if not revs:
+            return {}
+        out = git(repo, "log", "--no-walk=unsorted", "--format=%H %T %P", *revs) or ""
+        return {p[0]: p[1:] for p in (line.split() for line in out.splitlines()) if len(p) >= 2}
+    own = log(sorted(set(shas)))
+    parents = log(sorted({v[1] for v in own.values() if len(v) > 1}))
+    return {sha: (parents.get(v[1], [None])[0] if len(v) > 1 else None, v[0]) for sha, v in own.items()}
 
 
 def covered_by_tree(repo, pids, seqs, out):
@@ -184,12 +191,14 @@ def covered_by_tree(repo, pids, seqs, out):
     for _, commits in seqs:
         for sha, pid in commits:
             reviewed.setdefault(pid, []).append(sha)
-    for sha, pid in pids.items():
-        if pid not in reviewed:
-            continue
-        check_deadline()
-        mine = trees(repo, sha)
-        if mine[0] and mine[1] and any(trees(repo, r) == mine for r in reviewed[pid]):
+    candidates = {sha: pid for sha, pid in pids.items() if pid in reviewed}
+    if not candidates:
+        return
+    check_deadline()
+    known = trees(repo, list(candidates) + [r for pid in candidates.values() for r in reviewed[pid]])
+    for sha, pid in candidates.items():
+        mine = known.get(sha)
+        if mine and mine[0] and mine[1] and any(known.get(r) == mine for r in reviewed[pid]):
             out.add(sha)
 
 
@@ -481,7 +490,12 @@ def status(repo, head="HEAD"):
     if matched:
         matched -= excuse_findings(repo, shas, pids, matched, below, seqs)
     unreviewed = [s for s in shas if s not in below and s not in matched]
-    findings = standing_findings(repo, unreviewed)
+    try:
+        findings = standing_findings(repo, unreviewed, pids if not all(s in below for s in shas) else None)
+    except OutOfTime:
+        # Unchecked findings fail closed: every reviewer is asked.
+        findings = {r: [] for r in FULL}
+        timed_out.append("findings")
     # Past MAX_COMMITS the older commits are never examined. A passed commit
     # covers its ancestors, so they are reviewed when the oldest examined
     # commit sits below one. Otherwise only ancestry counts, and a patch match
