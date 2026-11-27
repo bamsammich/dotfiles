@@ -88,17 +88,66 @@ def passed(repo, sha):
     return is_passed(load(repo, sha))
 
 
-def round_roles(repo, unreviewed):
+def standing_findings(repo, unreviewed):
+    """{role: [failed commit]} for every fix-required that bears on the
+    unreviewed commits: one recorded on an unreviewed commit, or on any commit
+    whose patch matches one of them, so a rebase or an amend that keeps the
+    patch keeps the finding too."""
+    out = {}
+    if not unreviewed:
+        return out
+    branch_pids = {pid for pid in patch_ids(repo, [f"{unreviewed[-1]}^..{unreviewed[0]}"]).values()}
+    try:
+        files = list(marker_dir(repo).glob("*.json"))
+    except OSError:
+        files = []
+    for f in files:
+        try:
+            m = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        failed = [r for r in ROLES.values() if m.get(r, {}).get("verdict") == "fix-required"]
+        if not failed:
+            continue
+        hit = f.stem in unreviewed or bool(set(patch_ids(repo, [f"{f.stem}^!"]).values()) & branch_pids)
+        if hit:
+            for r in failed:
+                out.setdefault(r, []).append(f.stem)
+    return out
+
+
+def round_roles(repo, unreviewed, findings=None):
     """Who must review the unreviewed commits: the size tier's roles, plus any
-    role that already returned fix-required on one of them, so a finding is
-    confirmed fixed by the reviewer who raised it."""
+    role with a standing fix-required on them, so a finding is confirmed fixed
+    by the reviewer who raised it."""
     if not unreviewed:
         return []
     roles = set(required_roles(repo, unreviewed))
-    for sha in unreviewed:
-        m = load(repo, sha)
-        roles |= {r for r in ROLES.values() if m.get(r, {}).get("verdict") == "fix-required"}
+    roles |= set(standing_findings(repo, unreviewed) if findings is None else findings)
     return [r for r in FULL if r in roles]
+
+
+@lru_cache(maxsize=None)
+def parent_tree(repo, sha):
+    return git(repo, "rev-parse", "-q", "--verify", f"{sha}^^{{tree}}")
+
+
+def covered_by_tree(repo, pids, seqs):
+    """Commits whose patch a pass reviewed on the very same tree: the code they
+    produce is byte for byte what was reviewed, whatever history led there."""
+    reviewed = {}
+    for _, commits in seqs:
+        for sha, pid in commits:
+            reviewed.setdefault(pid, []).append(sha)
+    out = set()
+    for sha, pid in pids.items():
+        if pid not in reviewed:
+            continue
+        check_deadline()
+        mine = parent_tree(repo, sha)
+        if mine and any(parent_tree(repo, r) == mine for r in reviewed[pid]):
+            out.add(sha)
+    return out
 
 
 def required_roles(repo, shas):
@@ -368,7 +417,8 @@ def status(repo, head="HEAD"):
     head = git(repo, "rev-parse", "--verify", "-q", head + "^{commit}")
     if not head:
         return {"repo": repo, "head": None, "base_ref": None, "base": None, "last_passed": None,
-                "unreviewed": [], "required_roles": [], "passed": False, "needs_review": False}
+                "unreviewed": [], "required_roles": [], "standing_findings": {}, "passed": False,
+                "needs_review": False}
     ref = base_ref(repo)
     base = git(repo, "merge-base", head, ref) if ref else None
     span = [f"{base}..{head}"] if base else [head, "--not", "--remotes"]
@@ -379,8 +429,14 @@ def status(repo, head="HEAD"):
     if all(s in below for s in shas):
         matched = set()
     else:
-        matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
+        pids, seqs = patch_ids(repo, span), reviewed_sequences(repo)
+        matched = covered_by_patch(repo, base, pids, seqs)
+        try:
+            matched |= covered_by_tree(repo, {s: p for s, p in pids.items() if s not in matched}, seqs)
+        except OutOfTime:
+            timed_out.append("tree")
     unreviewed = [s for s in shas if s not in below and s not in matched]
+    findings = standing_findings(repo, unreviewed)
     # Past MAX_COMMITS the older commits are never examined. A passed commit
     # covers its ancestors, so they are reviewed when the oldest examined
     # commit sits below one. Otherwise only ancestry counts, and a patch match
@@ -398,7 +454,11 @@ def status(repo, head="HEAD"):
         # patch, so only new or changed patches land here.
         "unreviewed": unreviewed,
         # Who must review the unreviewed commits.
-        "required_roles": round_roles(repo, unreviewed),
+        "required_roles": round_roles(repo, unreviewed, findings),
+        # Roles with a fix-required on these commits or their patches, and the
+        # commits that carry it. The finding stands until that reviewer passes
+        # a commit that changes something since.
+        "standing_findings": findings,
         "passed": bool(shas) and not unreviewed,
         "needs_review": bool(unreviewed),
         # Patch matching stopped at the deadline, so some commits may be
@@ -524,7 +584,19 @@ def record(payload):
     # Who the round needs is worked out before the lock: it runs status, which
     # can take seconds, and parallel reviewers must not wait on each other. A
     # marker that already knows its roles skips it.
-    needed = None if "required" in load(repo, sha) else (status(repo, sha)["required_roles"] or FULL)
+    pre = load(repo, sha)
+    st = status(repo, sha) if "required" not in pre or found["verdict"] == "pass" else None
+    needed = None if "required" in pre else (st["required_roles"] or FULL)
+    if st and found["verdict"] == "pass":
+        unchanged = [f for f in st["standing_findings"].get(role, [])
+                     if f != sha and git(repo, "diff", "--quiet", f, sha) is not None]
+        if unchanged:
+            # Asking again about code that has not changed since the finding
+            # does not clear it.
+            log(role, payload, f"refused pass for {sha}: nothing changed since fix-required on {unchanged[0]}")
+            print(f"review-gate did not record this pass: nothing changed since {role} returned fix-required "
+                  f"on {unchanged[0][:12]}. Fix the finding, or ask the user.", file=sys.stderr)
+            return 0
     with marker_lock(repo):
         m = load(repo, sha)
         if "required" not in m:

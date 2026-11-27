@@ -433,6 +433,37 @@ expect "two verdicts recorded at once both land" "pass,pass" \
   "$(jq -r '[.security.verdict, .staff.verdict] | join(",")' \
     "$(git -C "$TR" rev-parse --path-format=absolute --git-common-dir)/review-gate/$(git -C "$TR" rev-parse HEAD).json")"
 
+# Same tree: a reviewed stack re-split into different commits, then the branch
+# above it rebased onto the new split. The new split needs review; the branch
+# above, whose patches sit on the same tree as before, does not.
+ST="$T/sametree"; git clone -q "$T/origin" "$ST" 2>/dev/null; q "$ST" checkout -b low
+srec() { for role in security-reviewer staff-reviewer intent-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$ST" "$1" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done; }
+seq 1 40 > "$ST/a"; seq 1 40 > "$ST/b"; q "$ST" add a b; q "$ST" commit -m ab
+q "$ST" checkout -b high; seq 1 40 > "$ST/c"; q "$ST" add c; q "$ST" commit -m c
+srec "$(git -C "$ST" rev-parse high)"
+q "$ST" checkout -b low2 origin/main; seq 1 40 > "$ST/a"; q "$ST" add a; q "$ST" commit -m a
+seq 1 40 > "$ST/b"; q "$ST" add b; q "$ST" commit -m b
+q "$ST" checkout -b high2 low2; q "$ST" cherry-pick high
+expect "a re-split stack needs review of its new commits only" 2 \
+  "$("$G" status "$ST" | jq -r '.unreviewed | length')"
+
+# A finding survives a rebase that keeps the patch, and an empty commit does
+# not clear it.
+FR="$T/findings"; git clone -q "$T/origin" "$FR" 2>/dev/null; q "$FR" checkout -b f
+echo 'func TestA() {}' > "$FR/a_test.go"; q "$FR" add a_test.go; q "$FR" commit -m t
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: fix-required\n' "$FR" "$(git -C "$FR" rev-parse HEAD)" |
+  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:.}' | "$G" record
+q "$FR" checkout -b f2 origin/main; echo moved > "$FR/moved"; q "$FR" add moved; q "$FR" commit -m moved
+q "$FR" cherry-pick f
+expect "a finding survives a rebase that keeps the patch" "security" \
+  "$("$G" status "$FR" | jq -r '.standing_findings | keys | join(",")')"
+q "$FR" checkout -q f; q "$FR" commit --allow-empty -m retry
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$FR" "$(git -C "$FR" rev-parse HEAD)" |
+  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:.}' | "$G" record
+expect "an empty commit does not clear a finding" true "$("$G" status "$FR" | jq -r '.needs_review')"
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
