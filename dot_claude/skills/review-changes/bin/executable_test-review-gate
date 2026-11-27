@@ -241,6 +241,9 @@ merged_case "a top branch rebased onto a fast-forwarded bottom needs no review" 
 merged_case "a top branch rebased onto a merge-commit bottom needs no review" merge
 merged_case "a top branch rebased onto a rebase-merged bottom needs no review" rebase
 merged_case "a top branch rebased onto a squash-merged bottom needs no review" squash
+# Past the deadline the patch matching stops, so the same branch needs review.
+expect "a branch whose patch matching runs out of time needs review" 1 \
+  "$([ "$(REVIEW_GATE_DEADLINE=0 "$G" status "$T/merge-squash" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
 
 # A three-branch stack whose single-commit bottom and two-commit middle both
 # squash-merge, one after the other. The top needs no review.
@@ -291,12 +294,16 @@ q "$S" checkout -b i3 main
 for c in i2~1 i1~1 i1 i2; do q "$S" cherry-pick "$(git -C "$S" rev-parse "$c")"; done
 expect "commits from two passes interleaved need review" 1 "$([ "$(unrev i3)" -gt 0 ] && echo 1 || echo 0)"
 
-# A branch longer than the 500 commits status examines. Unreviewed, it fails
-# closed. Passed at its head, every commit below is reviewed, and only a new
+# A branch longer than the 500 commits status examines, each commit with a real
+# patch. Passed at its head, every commit below is reviewed, and only a new
 # commit on top needs review.
 L="$T/long"; git clone -q "$T/origin" "$L" 2>/dev/null; q "$L" checkout -b long
-c="$(git -C "$L" rev-parse HEAD)"; tree="$(git -C "$L" rev-parse 'HEAD^{tree}')"
-for i in $(seq 501); do c="$(git -C "$L" commit-tree "$tree" -p "$c" -m "long $i")"; done
+c="$(git -C "$L" rev-parse HEAD)"
+for i in $(seq 501); do
+  blob="$(echo "$i" | git -C "$L" hash-object -w --stdin)"
+  git -C "$L" update-index --add --cacheinfo "100644,$blob,f$i"
+  c="$(git -C "$L" commit-tree "$(git -C "$L" write-tree)" -p "$c" -m "long $i")"
+done
 q "$L" reset -q --hard "$c"
 expect "an unreviewed branch over 500 commits needs review" 1 \
   "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
@@ -307,6 +314,17 @@ expect "a passed branch over 500 commits needs no review" 0 "$("$G" status "$L" 
 q "$L" commit --allow-empty -m "one more"
 expect "a commit on a passed branch over 500 commits needs review alone" 1 \
   "$("$G" status "$L" | jq -r '.unreviewed | length')"
+# Rebased, every patch matches the long pass, but status never examined the
+# oldest commit, so the branch still needs review.
+q "$L" checkout -b long-rebased origin/main; echo moved > "$L/moved"; q "$L" add moved; q "$L" commit -m moved
+q "$L" cherry-pick "long~501..long~1"
+expect "a rebased branch over 500 commits needs review" 1 \
+  "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
+# Only the oldest of the long pass's commits is dropped. The newest 500 all
+# match, but the pass covered more than 500, so it covers nothing by patch.
+q "$L" checkout -b long-dropped origin/main; q "$L" cherry-pick "long~500..long~1"
+expect "a long pass with its oldest commit dropped needs review" 1 \
+  "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |

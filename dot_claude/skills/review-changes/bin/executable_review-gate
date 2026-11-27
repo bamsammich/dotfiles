@@ -146,6 +146,23 @@ def landed(repo, fork, base):
     return frozenset(patch_ids(repo, [f"{fork}..{base}"]).values())
 
 
+# The gate hook has a 15 s timeout, and a hook that times out issues no deny,
+# so the push would go through. Past this many seconds the patch matching
+# stops, and every commit it has not covered stays unreviewed.
+DEADLINE_SECONDS = float(os.environ.get("REVIEW_GATE_DEADLINE") or 10)
+_started = time.monotonic()
+
+
+class OutOfTime(Exception):
+    pass
+
+
+def check_deadline():
+    if time.monotonic() - _started > DEADLINE_SECONDS:
+        raise OutOfTime()
+
+
+@lru_cache(maxsize=None)
 def diff_id(repo, a, b):
     """The patch id of the whole change from commit a to commit b."""
     d = subprocess.run(["git", "-C", str(repo), "diff", "--no-color", "--no-ext-diff", "--no-textconv",
@@ -170,8 +187,12 @@ def unmerged(repo, marker, commits, base, branch):
     # would read the commits it cut off as merged.
     kept = set((git(repo, "rev-list", marker, "--not", base) or "").split())
     commits = [c for c in commits if c[0] in kept]
+    # The pass's first remaining patch is still on the branch, so nothing ahead
+    # of it can have landed. Skip the default branch's patch log, the costly part.
+    if not commits or commits[0][1] in branch:
+        return commits
     fork = git(repo, "merge-base", marker, base)
-    if not fork or not commits:
+    if not fork:
         return commits
     merged = landed(repo, fork, base)
     # Walk the leading run, moving start past each part that landed: one commit
@@ -182,7 +203,14 @@ def unmerged(repo, marker, commits, base, branch):
             start, commits = commits[0][0], commits[1:]
             continue
         limit = next((i for i, c in enumerate(commits) if c[1] in branch), len(commits))
-        k = next((k for k in range(limit - 1, 0, -1) if diff_id(repo, start, commits[k][0]) in merged), None)
+        # Shortest run first: a merged bottom is usually short next to the
+        # stack above it.
+        k = None
+        for i in range(1, limit):
+            check_deadline()
+            if diff_id(repo, start, commits[i][0]) in merged:
+                k = i
+                break
         if k is None:
             break
         start, commits = commits[k][0], commits[k + 1:]
@@ -202,6 +230,7 @@ def covered_by_patch(repo, base, pids, seqs):
     branch = set(pids.values())
     seen = {pid for _, commits in seqs for _, pid in commits}
     for marker, commits in seqs:
+        check_deadline()
         if not branch & {pid for _, pid in commits}:
             continue
         seq = [pid for _, pid in unmerged(repo, marker, commits, base, frozenset(branch))]
@@ -244,7 +273,10 @@ def status(repo, head="HEAD"):
     shas = (git(repo, "rev-list", f"--max-count={MAX_COMMITS}", *span) or "").split()
     last = next((s for s in shas if passed(repo, s)), None)
     below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
-    matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
+    try:
+        matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
+    except OutOfTime:
+        matched = set()
     unreviewed = [s for s in shas if s not in below and s not in matched]
     # Past MAX_COMMITS the older commits are never examined. A passed commit
     # covers its ancestors, so they are reviewed when the oldest examined
