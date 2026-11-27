@@ -210,22 +210,55 @@ pass "$(git -C "$S" rev-parse c)"
 q "$S" checkout -b b6 c; q "$S" rebase -q --onto c~2 c~1 b6
 expect "a reviewed patch whose reviewed predecessor was dropped needs review" 1 "$(unrev b6)"
 
-# The bottom branch of a stack merges into main, and the top is rebased onto
-# main. The top's patch is unchanged, so it needs no review.
-M="$T/merged"; git init -q --bare "$M.git"; git clone -q "$M.git" "$M" 2>/dev/null
-q "$M" commit --allow-empty -m init; q "$M" push origin HEAD:main; q "$M" remote set-head origin main
-mpass() { for role in security-reviewer staff-reviewer; do
-  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$M" "$1" |
-    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done; }
-q "$M" checkout -b m1; echo one > "$M/one"; q "$M" add one; q "$M" commit -m one
-q "$M" checkout -b m2; echo two > "$M/two"; q "$M" add two; q "$M" commit -m two
-mpass "$(git -C "$M" rev-parse m2)"
-q "$M" push origin m1:main; q "$M" fetch -q origin
-q "$M" checkout -q main 2>/dev/null || q "$M" checkout -b main origin/main
-q "$M" reset -q --hard origin/main
-q "$M" checkout -b m3 main; echo two > "$M/two"; q "$M" add two; q "$M" commit -m two
-expect "a top branch rebased onto a merged bottom needs no review" 0 \
-  "$("$G" status "$M" | jq -r '.unreviewed | length')"
+# A stack's bottom branch merges into main in each of the ways a forge merges
+# it, and the top is rebased onto main with a new committer date, so its SHA
+# differs from the reviewed one while its patch does not. The top needs no
+# review. The bottom has two commits, so a squash lands them as one patch.
+merged_case() {  # name style
+  local R="$T/merge-$2"
+  git init -q --bare "$R.git"; git clone -q "$R.git" "$R" 2>/dev/null
+  q "$R" commit --allow-empty -m init; q "$R" push origin HEAD:main; q "$R" remote set-head origin main
+  q "$R" checkout -b m1; echo one > "$R/one"; q "$R" add one; q "$R" commit -m one
+  echo more >> "$R/one"; q "$R" commit -am onefix
+  q "$R" checkout -b m2; echo two > "$R/two"; q "$R" add two; q "$R" commit -m two
+  local top; top="$(git -C "$R" rev-parse m2)"
+  for role in security-reviewer staff-reviewer; do
+    printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$top" |
+      jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+  q "$R" checkout -b landing origin/main
+  case "$2" in
+    ff) q "$R" merge --ff-only m1 ;;
+    merge) q "$R" merge --no-ff -m "Merge m1" m1 ;;
+    rebase) GIT_COMMITTER_DATE=2001-01-01T00:00:00 q "$R" cherry-pick m1~1 m1 ;;
+    squash) q "$R" merge --squash m1; q "$R" commit -m "one (#1)" ;;
+  esac
+  q "$R" push origin landing:main; q "$R" fetch -q origin
+  q "$R" checkout -b m3 origin/main
+  GIT_COMMITTER_DATE=2001-01-01T00:00:00 q "$R" cherry-pick "$top"
+  expect "$1" 0 "$("$G" status "$R" | jq -r '.unreviewed | length')"
+}
+merged_case "a top branch rebased onto a fast-forwarded bottom needs no review" ff
+merged_case "a top branch rebased onto a merge-commit bottom needs no review" merge
+merged_case "a top branch rebased onto a rebase-merged bottom needs no review" rebase
+merged_case "a top branch rebased onto a squash-merged bottom needs no review" squash
+
+# A squash that is not the reviewed bottom, such as a bottom changed before
+# it merged, still leaves the top needing review.
+R="$T/merge-changed"
+git init -q --bare "$R.git"; git clone -q "$R.git" "$R" 2>/dev/null
+q "$R" commit --allow-empty -m init; q "$R" push origin HEAD:main; q "$R" remote set-head origin main
+q "$R" checkout -b m1; echo one > "$R/one"; q "$R" add one; q "$R" commit -m one
+echo more >> "$R/one"; q "$R" commit -am onefix
+q "$R" checkout -b m2; echo two > "$R/two"; q "$R" add two; q "$R" commit -m two
+TOP="$(git -C "$R" rev-parse m2)"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$TOP" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+q "$R" checkout -b landing origin/main; echo other > "$R/one"; q "$R" add one; q "$R" commit -m "one, changed (#1)"
+q "$R" push origin landing:main; q "$R" fetch -q origin
+q "$R" checkout -b m3 origin/main; GIT_COMMITTER_DATE=2001-01-01T00:00:00 q "$R" cherry-pick "$TOP"
+expect "a top branch on a bottom that merged changed needs review" 1 \
+  "$("$G" status "$R" | jq -r '.unreviewed | length')"
 
 # Two passes reviewed a,b and c,d. A branch that interleaves them was never
 # reviewed in that order.

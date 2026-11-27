@@ -59,9 +59,8 @@ def passed(repo, sha):
     return all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values())
 
 
-# Both a branch's patches and a pass's sequence keep their newest MAX_COMMITS
-# commits. On a longer branch the two windows start at different commits, the
-# match fails, and the gate asks for review again.
+# status examines a branch's newest MAX_COMMITS commits, and fails closed on a
+# longer branch.
 MAX_COMMITS = 500
 
 
@@ -94,27 +93,28 @@ def save(repo, sha, m):
 
 
 def sequence(repo, sha, m):
-    """Patch ids of the commits a pass at sha covered, oldest first: every commit
-    from the fork point to sha. A marker written before this field existed gets
-    it on first read."""
-    if isinstance(m.get("sequence"), list):
-        return m["sequence"]
+    """[sha, patch id] for each commit a pass at sha covered, oldest first: every
+    commit from the fork point to sha. A marker written before this field
+    existed gets it on first read."""
+    if isinstance(m.get("commits"), list):
+        return [tuple(c) for c in m["commits"]]
     if not git(repo, "rev-parse", "--verify", "-q", sha + "^{commit}"):
         return []
     ref = base_ref(repo)
     base = git(repo, "merge-base", sha, ref) if ref else None
-    ids = list(patch_ids(repo, [f"{base}..{sha}"] if base else [sha, "--not", "--remotes"]).values())
-    m["sequence"] = ids
+    commits = list(patch_ids(repo, [f"{base}..{sha}"] if base else [sha, "--not", "--remotes"]).items())
+    m["commits"] = [list(c) for c in commits]
     m.pop("covers", None)
+    m.pop("sequence", None)
     try:
         save(repo, sha, m)
     except OSError:
         pass
-    return ids
+    return commits
 
 
 def reviewed_sequences(repo):
-    """(sha, sequence) for every passed marker in the repository."""
+    """(sha, commits) for every passed marker in the repository."""
     out = []
     try:
         files = list(marker_dir(repo).glob("*.json"))
@@ -126,38 +126,71 @@ def reviewed_sequences(repo):
         except (OSError, ValueError):
             continue
         if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
-            seq = sequence(repo, f.stem, m)
-            if seq:
-                out.append((f.stem, seq))
+            commits = sequence(repo, f.stem, m)
+            if commits:
+                out.append((f.stem, commits))
     return out
 
 
-def landed(repo, sha, base):
-    """Patch ids that reached the default branch after the pass at sha forked
-    from it: a bottom branch of a stack that merged after the pass."""
+@lru_cache(maxsize=None)
+def landed(repo, fork, base):
+    """Patch ids of the commits that reached the default branch since fork."""
+    return frozenset(patch_ids(repo, [f"{fork}..{base}"]).values())
+
+
+def diff_id(repo, a, b):
+    """The patch id of the whole change from commit a to commit b."""
+    d = subprocess.run(["git", "-C", str(repo), "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+                        "--no-renames", a, b], capture_output=True)
+    if d.returncode != 0 or not d.stdout:
+        return None
+    r = subprocess.run(["git", "-C", str(repo), "patch-id", "--verbatim"], input=d.stdout, capture_output=True)
+    parts = r.stdout.decode(errors="replace").split()
+    return parts[0] if parts else None
+
+
+def unmerged(repo, marker, commits, base, branch):
+    """The marker's commits less those that have reached the default branch since
+    the pass: a stack's bottom branch merged after it. A fast-forward or a merge
+    commit keeps their SHAs, a rebase merge keeps their patches, and a squash
+    merge lands a run of them as one patch, so a leading run whose combined
+    diff matches a landed patch drops too. branch is the patch ids on the branch
+    being checked; a run ends before the first of them."""
     if not base:
-        return set()
-    fork = git(repo, "merge-base", sha, base)
-    return set(patch_ids(repo, [f"{fork}..{base}"]).values()) if fork else set()
+        return commits
+    kept = set((git(repo, "rev-list", f"--max-count={MAX_COMMITS}", marker, "--not", base) or "").split())
+    commits = [c for c in commits if c[0] in kept]
+    fork = git(repo, "merge-base", marker, base)
+    if not fork or not commits:
+        return commits
+    merged = landed(repo, fork, base)
+    commits = [c for c in commits if c[1] not in merged]
+    start = fork
+    while commits and merged:
+        limit = next((i for i, c in enumerate(commits) if c[1] in branch), len(commits))
+        k = next((k for k in range(limit - 1, 0, -1) if diff_id(repo, start, commits[k][0]) in merged), None)
+        if k is None:
+            break
+        start, commits = commits[k][0], commits[k + 1:]
+    return commits
 
 
 def covered_by_patch(repo, base, pids, seqs):
     """Commits whose patch a pass covered in context. pids maps each commit on the
     branch to its patch id, oldest first. A pass covers a commit when the
     branch's patches that the pass also reviewed, up to and including that
-    commit, are the start of the pass's own sequence, less any of its patches
-    that have since landed on the default branch. A commit no pass has seen may
-    sit between them, since it gets its own review. A patch the pass reviewed
-    but the branch dropped, reordered or never had ends the match, and so does
-    a patch another pass reviewed, since no one reviewed the two together."""
+    commit, are the start of the pass's own sequence, less what has since
+    merged into the default branch. A commit no pass has seen may sit between
+    them, since it gets its own review. A patch the pass reviewed but the
+    branch dropped, reordered or never had ends the match, and so does a patch
+    another pass reviewed, since no one reviewed the two together."""
     out = set()
     branch = set(pids.values())
-    seen = {pid for _, seq in seqs for pid in seq}
-    for marker, seq in seqs:
-        if not branch & set(seq):
+    seen = {pid for _, commits in seqs for _, pid in commits}
+    for marker, commits in seqs:
+        if not branch & {pid for _, pid in commits}:
             continue
-        merged = landed(repo, marker, base)
-        seq = [pid for pid in seq if pid not in merged]
+        seq = [pid for _, pid in unmerged(repo, marker, commits, base, frozenset(branch))]
         known, j = set(seq), 0
         for sha, pid in pids.items():
             if pid not in known:
@@ -199,6 +232,9 @@ def status(repo, head="HEAD"):
     below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
     matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
     unreviewed = [s for s in shas if s not in below and s not in matched]
+    # Past MAX_COMMITS the older commits are never examined, so fail closed.
+    if len(shas) == MAX_COMMITS and git(repo, "rev-list", "--count", *span) != str(MAX_COMMITS):
+        unreviewed = shas
     return {
         "repo": repo,
         "head": head,
@@ -330,8 +366,8 @@ def record(payload):
     m = load(repo, sha)
     m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    m.pop("covers", None)
-    m.pop("sequence", None)
+    for k in ("covers", "sequence", "commits"):
+        m.pop(k, None)
     save(repo, sha, m)
     if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
         sequence(repo, sha, m)
