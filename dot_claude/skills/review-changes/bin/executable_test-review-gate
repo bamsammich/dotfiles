@@ -485,7 +485,7 @@ seq 1 61 > "$FX/b"; q "$FX" add b; q "$FX" commit -m fix
 xrec "$(git -C "$FX" rev-parse HEAD)" pass
 q "$FX" checkout -b alone origin/main; echo m > "$FX/m"; q "$FX" add m; q "$FX" commit -m m
 q "$FX" cherry-pick "$BAD"
-expect "a failed commit pushed without its fix needs review" true "$("$G" status "$FX" | jq -r '.needs_review')"
+expect "a failed commit pushed without its fix needs review" 2 "$("$G" status "$FX" | jq -r '.unreviewed | length')"
 q "$FX" checkout -b both origin/main; echo m > "$FX/m"; q "$FX" add m; q "$FX" commit -m m
 q "$FX" cherry-pick "$BAD" fx
 expect "a failed commit rebased with its fix above it needs only the new commit" 1 \

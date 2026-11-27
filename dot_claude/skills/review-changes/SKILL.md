@@ -8,6 +8,8 @@ Every commit that leaves this machine passes review first. A full round runs thr
 
 The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After changing it, run `bin/test-review-gate`, a table of push commands and the decision each should get.
 
+The reviews exist so that nobody knowingly merges insecure, poor-quality or wrongly designed code. They are not a defence against an agent working to deceive the user, and the purpose you write for them should not ask them to hunt for one.
+
 ## Steps
 
 1. **Commit first.** Reviews are keyed to a commit, so uncommitted changes are never covered. Commit everything you intend to push.

@@ -18,7 +18,11 @@ order. Patches that have since merged into the default branch drop out first,
 whether they landed by fast-forward, merge commit, rebase or squash. A rebase,
 a cascade up a stack, or a merged bottom branch then asks for review of new
 patches only, while a cherry-pick, a dropped commit or a reorder asks again.
-A branch longer than MAX_COMMITS fails closed. `touch ~/.claude/.review-gate-off`
+A branch longer than MAX_COMMITS fails closed.
+
+The gate keeps an agent from pushing code that skipped review by accident or
+under pressure. It is not a security boundary against an agent working to
+deceive the user, which could disable the hook in settings. `touch ~/.claude/.review-gate-off`
 turns the gate off.
 """
 import fcntl

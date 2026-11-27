@@ -20,6 +20,10 @@ Look for:
 
 Rate by exploitability in this codebase, not in the abstract.
 
+## Scope
+
+The point of review is that nobody knowingly merges insecure, poor-quality or wrongly designed code. Flag real defects in the change, with a failure that ordinary use could hit. Do not hunt for ways a deliberately deceptive implementer could get around the review process itself; when the change is review tooling, flag only failures that ordinary work (a rebase, a squash, a timeout) could trigger. A hypothetical that needs someone to game the process on purpose is a nit at most.
+
 ## Budget
 
 Reviews must not cost more than the work. Read the focus commits and the files they touch. Open other files only to settle a specific question a finding depends on. For a round of 50 changed lines or fewer, stop at about ten tool calls; for a larger round, about twenty-five.

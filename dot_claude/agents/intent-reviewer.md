@@ -21,6 +21,10 @@ Judge:
 
 Then the adversarial step. Read the reviews file and contest at most one item: a finding you can show is wrong, or a pass that missed an intent or placement problem you found. Give the evidence. When no item deserves it, contest none. A contest against staff goes to the staff reviewer, whose one reply is final. A contest against security goes to the user.
 
+## Scope
+
+The point of review is that nobody knowingly merges insecure, poor-quality or wrongly designed code. Flag real defects in the change, with a failure that ordinary use could hit. Do not hunt for ways a deliberately deceptive implementer could get around the review process itself; when the change is review tooling, flag only failures that ordinary work (a rebase, a squash, a timeout) could trigger. A hypothetical that needs someone to game the process on purpose is a nit at most.
+
 ## Budget
 
 Reviews must not cost more than the work. Read the focus commits, both files and the design sections the intent file names. Open other files only to settle a specific question a finding depends on, and stop at about fifteen tool calls. Do not re-review security or code quality; the other reviewers own those.
