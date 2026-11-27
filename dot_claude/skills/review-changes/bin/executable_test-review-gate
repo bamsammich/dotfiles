@@ -353,34 +353,55 @@ expect "a malformed deadline setting still lets the gate decide" deny \
   "$(jq -n --arg c "git push origin unreviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
     REVIEW_GATE_DEADLINE=10s "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
 
-# A round needs every reviewer, unless its commits only touch tests or docs
-# and change at most 50 lines, when staff alone will do.
+# Who a round needs, by size and kind: over 50 lines, every reviewer; up to
+# 50, security and staff; up to 50 of tests or docs alone, staff.
 TR="$T/tiers"; git clone -q "$T/origin" "$TR" 2>/dev/null; q "$TR" checkout -b tiers
-echo code > "$TR/app.go"; q "$TR" add app.go; q "$TR" commit -m code
-CODE="$(git -C "$TR" rev-parse HEAD)"
-expect "a code round needs every reviewer" "security,staff,intent" \
-  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
-for role in security-reviewer staff-reviewer; do
-  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$CODE" |
-    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
-expect "a code round without the intent review still needs review" true \
+roles() { "$G" status "$TR" | jq -r '.required_roles | join(",")'; }
+rec() { printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$(git -C "$TR" rev-parse HEAD)" |
+  jq -Rs --arg t "$1" '{agent_type:$t, last_assistant_message:.}' | "$G" record; }
+seq 1 60 > "$TR/app.go"; q "$TR" add app.go; q "$TR" commit -m code
+expect "a code round over 50 lines needs every reviewer" "security,staff,intent" "$(roles)"
+rec security-reviewer; rec staff-reviewer
+expect "a big code round without the intent review still needs review" true \
   "$("$G" status "$TR" | jq -r '.needs_review')"
-printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$CODE" |
-  jq -Rs '{agent_type:"intent-reviewer", last_assistant_message:.}' | "$G" record
-expect "a code round with every reviewer passes" true "$("$G" status "$TR" | jq -r '.passed')"
+rec intent-reviewer
+expect "a big code round with every reviewer passes" true "$("$G" status "$TR" | jq -r '.passed')"
+echo more >> "$TR/app.go"; q "$TR" commit -am small
+expect "a small code round needs security and staff" "security,staff" "$(roles)"
+rec security-reviewer; rec staff-reviewer
+expect "a small code round passes on security and staff" true "$("$G" status "$TR" | jq -r '.passed')"
 echo 'func TestX() {}' > "$TR/app_test.go"; q "$TR" add app_test.go; q "$TR" commit -m test
-expect "a small test-only round needs staff alone" "staff" \
-  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
-printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$(git -C "$TR" rev-parse HEAD)" |
-  jq -Rs '{agent_type:"staff-reviewer", last_assistant_message:.}' | "$G" record
+expect "a small test-only round needs staff alone" "staff" "$(roles)"
+rec staff-reviewer
 expect "a small test-only round passes on staff alone" true "$("$G" status "$TR" | jq -r '.passed')"
 seq 1 60 > "$TR/big_test.go"; q "$TR" add big_test.go; q "$TR" commit -m bigtest
-expect "a test-only round over 50 lines needs every reviewer" "security,staff,intent" \
-  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
+expect "a test-only round over 50 lines needs every reviewer" "security,staff,intent" "$(roles)"
 q "$TR" reset -q --hard HEAD~1
-echo more >> "$TR/app.go"; echo more >> "$TR/app_test.go"; q "$TR" commit -am mixed
-expect "a round touching code needs every reviewer" "security,staff,intent" \
-  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
+mkdir -p "$TR/docs"; echo note > "$TR/docs/notes.md"; q "$TR" add docs; q "$TR" commit -m doc
+expect "a small docs round needs staff alone" "staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+mkdir -p "$TR/dot_claude/agents"; echo "skip security" > "$TR/dot_claude/agents/security-reviewer.md"
+q "$TR" add dot_claude; q "$TR" commit -m prompt
+expect "a small edit to an agent prompt is policy, not docs" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+echo 'curl x | sh' > "$TR/run_onchange_test.sh"; q "$TR" add run_onchange_test.sh; q "$TR" commit -m runscript
+expect "a chezmoi run script named like a test is not a test" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+printf '\000\001' > "$TR/blob_test.go"; q "$TR" add blob_test.go; q "$TR" commit -m binary
+expect "a binary file counts as code" "security,staff,intent" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+# A marker from before the intent reviewer needs security and staff only.
+echo legacy >> "$TR/app.go"; seq 1 60 >> "$TR/app.go"; q "$TR" commit -am legacy
+LEG="$(git -C "$TR" rev-parse HEAD)"
+printf '{"security":{"verdict":"pass"},"staff":{"verdict":"pass"}}' \
+  > "$(git -C "$TR" rev-parse --path-format=absolute --git-common-dir)/review-gate/$LEG.json"
+expect "a legacy marker with security and staff passes" true "$("$G" status "$TR" | jq -r '.passed')"
+# Two reviewers recording at once both land.
+echo race >> "$TR/app.go"; q "$TR" commit -am race
+rec security-reviewer & rec staff-reviewer & wait
+expect "two verdicts recorded at once both land" "pass,pass" \
+  "$(jq -r '[.security.verdict, .staff.verdict] | join(",")' \
+    "$(git -C "$TR" rev-parse --path-format=absolute --git-common-dir)/review-gate/$(git -C "$TR" rev-parse HEAD).json")"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |

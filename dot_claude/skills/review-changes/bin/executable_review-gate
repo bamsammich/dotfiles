@@ -1,14 +1,14 @@
 #!/usr/bin/env -S python3 -I
 """review-gate: security and staff review markers for git commits.
 
-  review-gate status [repo]   JSON: head, base, the range still to review, and
-                              whether head has passed both reviews.
+  review-gate status [repo]   JSON: head, base, the commits still to review,
+                              who must review them, and whether head passed.
   review-gate record          SubagentStop hook. Reads a security-reviewer,
                               staff-reviewer or intent-reviewer report and
                               stores its verdict.
   review-gate gate            PreToolUse hook. Denies `git push`, `gh pr create`
                               and pull_request_create tools unless the pushed
-                              commit passed both reviews.
+                              commits passed the reviews their round needs.
 
 Markers live in <git common dir>/review-gate/<sha>.json, shared by every
 worktree of a repository and never committed. A commit counts as reviewed when
@@ -21,6 +21,7 @@ patches only, while a cherry-pick, a dropped commit or a reorder asks again.
 A branch longer than MAX_COMMITS fails closed. `touch ~/.claude/.review-gate-off`
 turns the gate off.
 """
+import fcntl
 import json
 import os
 import re
@@ -33,14 +34,22 @@ from functools import lru_cache
 from pathlib import Path
 
 ROLES = {"security-reviewer": "security", "staff-reviewer": "staff", "intent-reviewer": "intent"}
-# A round of review needs every role, unless it is small: commits that only
-# touch tests or docs and change at most SMALL_LINES lines in all need staff
-# alone. A marker written before the intent reviewer existed needed LEGACY.
+# Who a round of review needs, by its size. A round of at most SMALL_LINES
+# changed lines needs security and staff, or staff alone when every file is a
+# test or a doc. Anything bigger needs the intent reviewer too. A marker
+# written before the intent reviewer existed needed LEGACY.
 FULL = ["security", "staff", "intent"]
-SMALL = ["staff"]
+SMALL = ["security", "staff"]
+TESTS_ONLY = ["staff"]
 LEGACY = ["security", "staff"]
 SMALL_LINES = 50
-TEST_OR_DOC = re.compile(r"(^|/)(tests?|testdata|__tests__)/|(^|/)test-|_test\.|\.test\.|\.spec\.|\.md$")
+TEST_OR_DOC = re.compile(r"(^|/)(tests?|testdata|__tests__)/|_test\.(go|py|ts|tsx|js)$|(^|/)test_[^/]*\.py$|"
+                         r"\.(test|spec)\.(ts|tsx|js)$|(^|/)docs/[^/]*\.md$|(^|/)README[^/]*$")
+# Files that steer agents or run on their own are never tests or docs, whatever
+# their name: agent and skill prompts, CLAUDE.md and AGENTS.md, chezmoi run
+# scripts, CI workflows and git hooks.
+POLICY = re.compile(r"(^|/)(dot_claude|\.claude|agents|skills|\.github|\.githooks)/|(^|/)(CLAUDE|AGENTS)\.md$|"
+                    r"(^|/)run_|conftest\.py$")
 OFF = Path.home() / ".claude" / ".review-gate-off"
 SKILL = "review-changes"
 
@@ -77,20 +86,26 @@ def passed(repo, sha):
 
 
 def required_roles(repo, shas):
-    """The roles a round reviewing shas needs: SMALL when every commit only
-    touches tests or docs and all of them change at most SMALL_LINES lines,
-    FULL otherwise. A binary file counts as code."""
-    total = 0
+    """The roles a round reviewing shas needs. A binary file, a policy file or
+    a commit git cannot describe counts as code."""
+    total, tests_only = 0, True
     for sha in shas:
-        for line in (git(repo, "show", "--numstat", "--format=", "--no-renames", sha) or "").splitlines():
+        out = git(repo, "show", "--numstat", "--format=", "--no-renames", sha)
+        if out is None:
+            return FULL
+        for line in out.splitlines():
             parts = line.split("\t")
             if len(parts) != 3:
                 continue
             added, deleted, path = parts
-            if added == "-" or not TEST_OR_DOC.search(path):
+            if added == "-":
                 return FULL
+            if POLICY.search(path) or not TEST_OR_DOC.search(path):
+                tests_only = False
             total += int(added) + int(deleted)
-    return SMALL if total <= SMALL_LINES else FULL
+    if total > SMALL_LINES:
+        return FULL
+    return TESTS_ONLY if tests_only else SMALL
 
 
 # status examines a branch's newest MAX_COMMITS commits, and fails closed on a
@@ -116,6 +131,24 @@ def patch_ids(repo, span):
         if len(parts) == 2:
             out[parts[1]] = parts[0]
     return out
+
+
+class marker_lock:
+    """An exclusive lock over the repository's markers, so two reviewers
+    recording at once cannot overwrite each other's verdict."""
+
+    def __init__(self, repo):
+        self.path = marker_dir(repo) / ".lock"
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.f = self.path.open("a")
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
 
 
 def save(repo, sha, m):
@@ -472,17 +505,22 @@ def record(payload):
               "starting with the three lines REPO, REVIEWED and VERDICT exactly as your instructions show.",
               file=sys.stderr)
         return 2
-    m = load(repo, sha)
-    if "required" not in m:
-        # The round's first verdict fixes which roles it needs.
-        m["required"] = status(repo, sha)["required_roles"] or FULL
-    m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
-               "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    for k in ("covers", "sequence", "commits"):
-        m.pop(k, None)
-    save(repo, sha, m)
-    if is_passed(m):
-        sequence(repo, sha, m)
+    # Who the round needs is worked out before the lock: it runs status, which
+    # can take seconds, and parallel reviewers must not wait on each other.
+    needed = status(repo, sha)["required_roles"] or FULL
+    with marker_lock(repo):
+        m = load(repo, sha)
+        if "required" not in m:
+            # The round's first verdict fixes which roles it needs. A marker
+            # already holding verdicts predates the intent reviewer.
+            m["required"] = LEGACY if any(r in m for r in ROLES.values()) else needed
+        m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
+                   "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        for k in ("covers", "sequence", "commits"):
+            m.pop(k, None)
+        save(repo, sha, m)
+        if is_passed(m):
+            sequence(repo, sha, m)
     log(role, payload, f"recorded {found['verdict']} for {sha} in {repo}")
     return 0
 
