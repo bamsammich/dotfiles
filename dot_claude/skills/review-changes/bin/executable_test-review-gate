@@ -242,6 +242,27 @@ merged_case "a top branch rebased onto a merge-commit bottom needs no review" me
 merged_case "a top branch rebased onto a rebase-merged bottom needs no review" rebase
 merged_case "a top branch rebased onto a squash-merged bottom needs no review" squash
 
+# A three-branch stack whose single-commit bottom and two-commit middle both
+# squash-merge, one after the other. The top needs no review.
+R="$T/merge-three"
+git init -q --bare "$R.git"; git clone -q "$R.git" "$R" 2>/dev/null
+q "$R" commit --allow-empty -m init; q "$R" push origin HEAD:main; q "$R" remote set-head origin main
+q "$R" checkout -b s1; echo a > "$R/a"; q "$R" add a; q "$R" commit -m a
+q "$R" checkout -b s2; echo b > "$R/b"; q "$R" add b; q "$R" commit -m b1
+echo more >> "$R/b"; q "$R" commit -am b2
+q "$R" checkout -b s3; echo c > "$R/c"; q "$R" add c; q "$R" commit -m c
+TOP="$(git -C "$R" rev-parse s3)"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$TOP" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+q "$R" checkout -b landing origin/main
+q "$R" merge --squash s1; q "$R" commit -m "a (#1)"
+q "$R" checkout s2 -- b; q "$R" commit -m "b (#2)"
+q "$R" push origin landing:main; q "$R" fetch -q origin
+q "$R" checkout -b s4 origin/main; GIT_COMMITTER_DATE=2001-01-01T00:00:00 q "$R" cherry-pick "$TOP"
+expect "a top branch on a squashed single-commit bottom and middle needs no review" 0 \
+  "$("$G" status "$R" | jq -r '.unreviewed | length')"
+
 # A squash that is not the reviewed bottom, such as a bottom changed before
 # it merged, still leaves the top needing review.
 R="$T/merge-changed"

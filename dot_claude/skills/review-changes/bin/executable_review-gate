@@ -13,8 +13,11 @@ Markers live in <git common dir>/review-gate/<sha>.json, shared by every
 worktree of a repository and never committed. A commit counts as reviewed when
 it is an ancestor of a passed commit, or when its patch matches one that a pass
 covered and every patch that pass reviewed before it is still below it, in
-order. A rebase or a cascade up a stack then asks for review of new patches
-only, while a cherry-pick, a dropped commit or a reorder asks again. `touch ~/.claude/.review-gate-off`
+order. Patches that have since merged into the default branch drop out first,
+whether they landed by fast-forward, merge commit, rebase or squash. A rebase,
+a cascade up a stack, or a merged bottom branch then asks for review of new
+patches only, while a cherry-pick, a dropped commit or a reorder asks again.
+A branch longer than MAX_COMMITS fails closed. `touch ~/.claude/.review-gate-off`
 turns the gate off.
 """
 import json
@@ -102,7 +105,12 @@ def sequence(repo, sha, m):
         return []
     ref = base_ref(repo)
     base = git(repo, "merge-base", sha, ref) if ref else None
-    commits = list(patch_ids(repo, [f"{base}..{sha}"] if base else [sha, "--not", "--remotes"]).items())
+    span = [f"{base}..{sha}"] if base else [sha, "--not", "--remotes"]
+    commits = list(patch_ids(repo, span).items())
+    # A pass over more than MAX_COMMITS would lose its oldest entries and match
+    # out of context, so it covers nothing by patch.
+    if git(repo, "rev-list", "--count", *span) != str(len(commits)) and len(commits) == MAX_COMMITS:
+        commits = []
     m["commits"] = [list(c) for c in commits]
     m.pop("covers", None)
     m.pop("sequence", None)
@@ -164,9 +172,13 @@ def unmerged(repo, marker, commits, base, branch):
     if not fork or not commits:
         return commits
     merged = landed(repo, fork, base)
-    commits = [c for c in commits if c[1] not in merged]
+    # Walk the leading run, moving start past each part that landed: one commit
+    # whose own patch landed, or a run of them that landed as one patch.
     start = fork
     while commits and merged:
+        if commits[0][1] in merged:
+            start, commits = commits[0][0], commits[1:]
+            continue
         limit = next((i for i, c in enumerate(commits) if c[1] in branch), len(commits))
         k = next((k for k in range(limit - 1, 0, -1) if diff_id(repo, start, commits[k][0]) in merged), None)
         if k is None:
