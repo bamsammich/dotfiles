@@ -143,7 +143,9 @@ def reviewed_sequences(repo):
 
 @lru_cache(maxsize=None)
 def landed(repo, fork, base):
-    """Patch ids of the commits that reached the default branch since fork."""
+    """Patch ids of the commits that reached the default branch since fork,
+    from its newest MAX_COMMITS commits only. A bottom that landed earlier is
+    missed, and the branch above it asks for review again."""
     return frozenset(patch_ids(repo, [f"{fork}..{base}"]).values())
 
 
@@ -839,6 +841,7 @@ def expand(repo, rev):
 
 
 def deny(reason):
+    signal.alarm(0)  # decided: a late watchdog must not write a second answer
     print(json.dumps({"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
@@ -942,15 +945,17 @@ def main():
         return record(payload)
     if cmd == "gate":
         def overrun(*_):
-            deny(f"Blocked by review-gate: checking this push took longer than {WATCHDOG_SECONDS} s, so it "
+            deny("Blocked by review-gate: checking this push ran past its time limit, so it "
                  "was refused rather than let through when the hook timed out. Push fewer refs at once.")
             sys.stdout.flush()
             os._exit(0)
         signal.signal(signal.SIGALRM, overrun)
-        signal.alarm(int(os.environ.get("REVIEW_GATE_WATCHDOG") or WATCHDOG_SECONDS)
-                     if (os.environ.get("REVIEW_GATE_WATCHDOG") or "").isdigit() else WATCHDOG_SECONDS)
+        override = os.environ.get("REVIEW_GATE_WATCHDOG") or ""
+        signal.alarm(min(max(int(override), 1), WATCHDOG_SECONDS) if override.isdigit() else WATCHDOG_SECONDS)
         try:
-            return gate(payload)
+            code = gate(payload)
+            signal.alarm(0)
+            return code
         except Exception as e:  # fail closed, loudly
             return deny(f"review-gate crashed ({type(e).__name__}: {e}). Tell the user; they can turn the "
                         "gate off with `touch ~/.claude/.review-gate-off`.")
