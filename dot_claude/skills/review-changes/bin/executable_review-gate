@@ -166,7 +166,9 @@ def unmerged(repo, marker, commits, base, branch):
     being checked; a run ends before the first of them."""
     if not base:
         return commits
-    kept = set((git(repo, "rev-list", f"--max-count={MAX_COMMITS}", marker, "--not", base) or "").split())
+    # No cap: a pass covers at most MAX_COMMITS commits, and a capped list here
+    # would read the commits it cut off as merged.
+    kept = set((git(repo, "rev-list", marker, "--not", base) or "").split())
     commits = [c for c in commits if c[0] in kept]
     fork = git(repo, "merge-base", marker, base)
     if not fork or not commits:
