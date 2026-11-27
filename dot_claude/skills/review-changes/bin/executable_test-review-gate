@@ -320,11 +320,32 @@ q "$L" checkout -b long-rebased origin/main; echo moved > "$L/moved"; q "$L" add
 q "$L" cherry-pick "long~501..long~1"
 expect "a rebased branch over 500 commits needs review" 1 \
   "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
+# A pass over exactly 500 commits, then a branch of one new commit on main with
+# those 500 cherry-picked above it. Every examined commit matches the pass, but
+# status never examined the new commit, so the branch needs review.
+q "$L" checkout -b exact long~2
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$L" "$(git -C "$L" rev-parse exact)" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+q "$L" checkout -b exact-evil origin/main; echo evil > "$L/evil"; q "$L" add evil; q "$L" commit -m evil
+q "$L" cherry-pick "$(git -C "$L" merge-base origin/main exact)..exact"
+expect "the branch of 500 matched commits has 501 in all" 501 "$(git -C "$L" rev-list --count origin/main..HEAD)"
+expect "a new commit under a branch of 500 matched commits needs review" 1 \
+  "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
 # Only the oldest of the long pass's commits is dropped. The newest 500 all
 # match, but the pass covered more than 500, so it covers nothing by patch.
 q "$L" checkout -b long-dropped origin/main; q "$L" cherry-pick "long~500..long~1"
 expect "a long pass with its oldest commit dropped needs review" 1 \
   "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
+
+# A gate that runs past its watchdog denies rather than letting the hook time
+# out, which would let the push through.
+expect "a gate that stalls past its watchdog denies a reviewed push" deny \
+  "$(jq -n --arg c "git push -u origin reviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+    REVIEW_GATE_WATCHDOG=1 REVIEW_GATE_TEST_STALL=3 "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+expect "a malformed deadline setting still lets the gate decide" deny \
+  "$(jq -n --arg c "git push origin unreviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+    REVIEW_GATE_DEADLINE=10s "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |

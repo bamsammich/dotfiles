@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -149,7 +150,17 @@ def landed(repo, fork, base):
 # The gate hook has a 15 s timeout, and a hook that times out issues no deny,
 # so the push would go through. Past this many seconds the patch matching
 # stops, and every commit it has not covered stays unreviewed.
-DEADLINE_SECONDS = float(os.environ.get("REVIEW_GATE_DEADLINE") or 10)
+def _deadline():
+    try:
+        return float(os.environ.get("REVIEW_GATE_DEADLINE") or 10)
+    except ValueError:
+        return 10.0
+
+
+DEADLINE_SECONDS = _deadline()
+# The whole gate hook, ref expansion included, denies once it runs this long,
+# still inside the hook's 15 s timeout.
+WATCHDOG_SECONDS = 12
 _started = time.monotonic()
 
 
@@ -217,6 +228,9 @@ def unmerged(repo, marker, commits, base, branch):
     return commits
 
 
+timed_out = []
+
+
 def covered_by_patch(repo, base, pids, seqs):
     """Commits whose patch a pass covered in context. pids maps each commit on the
     branch to its patch id, oldest first. A pass covers a commit when the
@@ -230,10 +244,16 @@ def covered_by_patch(repo, base, pids, seqs):
     branch = set(pids.values())
     seen = {pid for _, commits in seqs for _, pid in commits}
     for marker, commits in seqs:
-        check_deadline()
         if not branch & {pid for _, pid in commits}:
             continue
-        seq = [pid for _, pid in unmerged(repo, marker, commits, base, frozenset(branch))]
+        # Out of time, keep what the passes checked so far matched: each pass's
+        # matches stand on their own. The rest stays unreviewed.
+        try:
+            check_deadline()
+            seq = [pid for _, pid in unmerged(repo, marker, commits, base, frozenset(branch))]
+        except OutOfTime:
+            timed_out.append(marker)
+            break
         known, j = set(seq), 0
         for sha, pid in pids.items():
             if pid not in known:
@@ -263,6 +283,7 @@ def base_ref(repo):
 
 
 def status(repo, head="HEAD"):
+    timed_out.clear()
     head = git(repo, "rev-parse", "--verify", "-q", head + "^{commit}")
     if not head:
         return {"repo": repo, "head": None, "base_ref": None, "base": None, "last_passed": None,
@@ -273,10 +294,11 @@ def status(repo, head="HEAD"):
     shas = (git(repo, "rev-list", f"--max-count={MAX_COMMITS}", *span) or "").split()
     last = next((s for s in shas if passed(repo, s)), None)
     below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
-    try:
-        matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
-    except OutOfTime:
+    # Ancestry of a passed commit covering everything leaves nothing to match.
+    if all(s in below for s in shas):
         matched = set()
+    else:
+        matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
     unreviewed = [s for s in shas if s not in below and s not in matched]
     # Past MAX_COMMITS the older commits are never examined. A passed commit
     # covers its ancestors, so they are reviewed when the oldest examined
@@ -296,6 +318,9 @@ def status(repo, head="HEAD"):
         "unreviewed": unreviewed,
         "passed": bool(shas) and not unreviewed,
         "needs_review": bool(unreviewed),
+        # Patch matching stopped at the deadline, so some commits may be
+        # reviewed but not recognised as such.
+        "timed_out": bool(timed_out),
     }
 
 
@@ -842,11 +867,15 @@ def check(targets):
                 todo = " ".join(s[:12] for s in st["unreviewed"][:20])
                 if len(st["unreviewed"]) > 20:
                     todo += f" (+{len(st['unreviewed']) - 20} more)"
-                blocked.append(f"{repo} at {sha[:12]} ({got}; unreviewed commits: {todo})")
+                late = "; patch matching ran out of time, so some may be reviewed already" if st.get("timed_out") else ""
+                blocked.append(f"{repo} at {sha[:12]} ({got}; unreviewed commits: {todo}{late})")
     return blocked, unchecked
 
 
 def gate(payload):
+    stall = os.environ.get("REVIEW_GATE_TEST_STALL") or ""
+    if stall.isdigit():
+        time.sleep(int(stall))  # lets the test reach the watchdog
     if OFF.exists():
         return 0
     tool = payload.get("tool_name") or ""
@@ -912,6 +941,14 @@ def main():
     if cmd == "record":
         return record(payload)
     if cmd == "gate":
+        def overrun(*_):
+            deny(f"Blocked by review-gate: checking this push took longer than {WATCHDOG_SECONDS} s, so it "
+                 "was refused rather than let through when the hook timed out. Push fewer refs at once.")
+            sys.stdout.flush()
+            os._exit(0)
+        signal.signal(signal.SIGALRM, overrun)
+        signal.alarm(int(os.environ.get("REVIEW_GATE_WATCHDOG") or WATCHDOG_SECONDS)
+                     if (os.environ.get("REVIEW_GATE_WATCHDOG") or "").isdigit() else WATCHDOG_SECONDS)
         try:
             return gate(payload)
         except Exception as e:  # fail closed, loudly
