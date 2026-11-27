@@ -47,9 +47,9 @@ TEST_OR_DOC = re.compile(r"(^|/)(tests?|testdata|__tests__)/|_test\.(go|py|ts|ts
                          r"\.(test|spec)\.(ts|tsx|js)$|(^|/)docs/[^/]*\.md$|(^|/)README(\.(md|txt|rst))?$")
 # Files that steer agents or run on their own are never tests or docs, whatever
 # their name: agent and skill prompts, CLAUDE.md and AGENTS.md, chezmoi run
-# scripts and templates, CI workflows and git hooks.
+# run and modify scripts and templates, CI workflows and git hooks.
 POLICY = re.compile(r"(^|/)(dot_claude|\.claude|agents|skills|\.github|\.githooks)/|(^|/)(CLAUDE|AGENTS)\.md$|"
-                    r"(^|/)run_|conftest\.py$|\.tmpl$")
+                    r"(^|/)(run|modify)_|conftest\.py$|\.tmpl$")
 OFF = Path.home() / ".claude" / ".review-gate-off"
 SKILL = "review-changes"
 
@@ -86,6 +86,19 @@ def is_passed(m):
 
 def passed(repo, sha):
     return is_passed(load(repo, sha))
+
+
+def round_roles(repo, unreviewed):
+    """Who must review the unreviewed commits: the size tier's roles, plus any
+    role that already returned fix-required on one of them, so a finding is
+    confirmed fixed by the reviewer who raised it."""
+    if not unreviewed:
+        return []
+    roles = set(required_roles(repo, unreviewed))
+    for sha in unreviewed:
+        m = load(repo, sha)
+        roles |= {r for r in ROLES.values() if m.get(r, {}).get("verdict") == "fix-required"}
+    return [r for r in FULL if r in roles]
 
 
 def required_roles(repo, shas):
@@ -385,7 +398,7 @@ def status(repo, head="HEAD"):
         # patch, so only new or changed patches land here.
         "unreviewed": unreviewed,
         # Who must review the unreviewed commits.
-        "required_roles": required_roles(repo, unreviewed) if unreviewed else [],
+        "required_roles": round_roles(repo, unreviewed),
         "passed": bool(shas) and not unreviewed,
         "needs_review": bool(unreviewed),
         # Patch matching stopped at the deadline, so some commits may be
@@ -518,6 +531,13 @@ def record(payload):
             # The round's first verdict fixes which roles it needs. A marker
             # already holding verdicts predates the intent reviewer.
             m["required"] = LEGACY if any(r in m for r in ROLES.values()) else (needed or FULL)
+        if role == "security" and m.get(role, {}).get("verdict") == "fix-required" and found["verdict"] == "pass":
+            # A security finding is cleared by a fix in a new commit, or by the
+            # user, never by asking again about the same commit.
+            log(role, payload, f"kept fix-required for {sha}: a pass cannot replace it on the same commit")
+            print("review-gate kept the earlier security fix-required on this commit. Fix the finding in a "
+                  "new commit, or ask the user.", file=sys.stderr)
+            return 0
         m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         for k in ("covers", "sequence", "commits"):

