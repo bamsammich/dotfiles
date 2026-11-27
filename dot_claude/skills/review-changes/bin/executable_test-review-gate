@@ -460,9 +460,36 @@ q "$FR" cherry-pick f
 expect "a finding survives a rebase that keeps the patch" "security" \
   "$("$G" status "$FR" | jq -r '.standing_findings | keys | join(",")')"
 q "$FR" checkout -q f; q "$FR" commit --allow-empty -m retry
-printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$FR" "$(git -C "$FR" rev-parse HEAD)" |
-  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:.}' | "$G" record
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$FR" "$(git -C "$FR" rev-parse HEAD)" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record 2>/dev/null; done
 expect "an empty commit does not clear a finding" true "$("$G" status "$FR" | jq -r '.needs_review')"
+q "$FR" checkout -q -b mainmove origin/main; echo moved2 > "$FR/moved2"; q "$FR" add moved2
+q "$FR" commit -m moved2; q "$FR" push -q origin mainmove:main; q "$FR" fetch -q origin
+q "$FR" checkout -q -b f3 origin/main; q "$FR" cherry-pick "$(git -C "$FR" rev-parse f~1)"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$FR" "$(git -C "$FR" rev-parse HEAD)" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record 2>/dev/null; done
+expect "a rebase that carries the failed patch unchanged does not clear it" true \
+  "$("$G" status "$FR" | jq -r '.needs_review')"
+
+# A failed commit covered only with its fix: pushed alone it needs review,
+# rebased with its fix above it it does not.
+FX="$T/fixed"; git clone -q "$T/origin" "$FX" 2>/dev/null; q "$FX" checkout -b fx
+xrec() { for role in security-reviewer staff-reviewer intent-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: %s\n' "$FX" "$1" "$2" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record 2>/dev/null; done; }
+seq 1 60 > "$FX/a"; q "$FX" add a; q "$FX" commit -m bad
+BAD="$(git -C "$FX" rev-parse HEAD)"; xrec "$BAD" fix-required
+seq 1 61 > "$FX/b"; q "$FX" add b; q "$FX" commit -m fix
+xrec "$(git -C "$FX" rev-parse HEAD)" pass
+q "$FX" checkout -b alone origin/main; echo m > "$FX/m"; q "$FX" add m; q "$FX" commit -m m
+q "$FX" cherry-pick "$BAD"
+expect "a failed commit pushed without its fix needs review" true "$("$G" status "$FX" | jq -r '.needs_review')"
+q "$FX" checkout -b both origin/main; echo m > "$FX/m"; q "$FX" add m; q "$FX" commit -m m
+q "$FX" cherry-pick "$BAD" fx
+expect "a failed commit rebased with its fix above it needs only the new commit" 1 \
+  "$("$G" status "$FX" | jq -r '.unreviewed | length')"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |

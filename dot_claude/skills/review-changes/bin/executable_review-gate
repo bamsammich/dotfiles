@@ -88,6 +88,30 @@ def passed(repo, sha):
     return is_passed(load(repo, sha))
 
 
+@lru_cache(maxsize=None)
+def own_patch_id(repo, sha):
+    """The patch id of one commit, which never changes."""
+    return next(iter(patch_ids(repo, [f"{sha}^!"]).values()), None)
+
+
+def failed_markers(repo):
+    """(sha, [roles that returned fix-required]) for every marker with one."""
+    out = []
+    try:
+        files = list(marker_dir(repo).glob("*.json"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            m = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        failed = [r for r in ROLES.values() if m.get(r, {}).get("verdict") == "fix-required"]
+        if failed:
+            out.append((f.stem, failed))
+    return out
+
+
 def standing_findings(repo, unreviewed):
     """{role: [failed commit]} for every fix-required that bears on the
     unreviewed commits: one recorded on an unreviewed commit, or on any commit
@@ -96,23 +120,40 @@ def standing_findings(repo, unreviewed):
     out = {}
     if not unreviewed:
         return out
-    branch_pids = {pid for pid in patch_ids(repo, [f"{unreviewed[-1]}^..{unreviewed[0]}"]).values()}
-    try:
-        files = list(marker_dir(repo).glob("*.json"))
-    except OSError:
-        files = []
-    for f in files:
-        try:
-            m = json.loads(f.read_text())
-        except (OSError, ValueError):
-            continue
-        failed = [r for r in ROLES.values() if m.get(r, {}).get("verdict") == "fix-required"]
-        if not failed:
-            continue
-        hit = f.stem in unreviewed or bool(set(patch_ids(repo, [f"{f.stem}^!"]).values()) & branch_pids)
-        if hit:
+    branch_pids = {own_patch_id(repo, s) for s in unreviewed} - {None}
+    for sha, failed in failed_markers(repo):
+        check_deadline()
+        if sha in unreviewed or own_patch_id(repo, sha) in branch_pids:
             for r in failed:
-                out.setdefault(r, []).append(f.stem)
+                out.setdefault(r, []).append(sha)
+    return out
+
+
+def excuse_findings(repo, shas, pids, matched, below, seqs):
+    """Matched commits whose own patch drew a fix-required, minus those whose
+    fix is still above them. A pass that reviewed a failed commit together with
+    its fix covers the failed commit only while a later commit from that same
+    pass sits above it on the branch; pushed alone, it stands unreviewed."""
+    failed_shas = {sha for sha, _ in failed_markers(repo)}
+    failed_pids = {own_patch_id(repo, sha) for sha in failed_shas} - {None}
+    order = {sha: i for i, sha in enumerate(shas)}  # newest first: a smaller index sits above
+    covered = matched | below
+    out = set()
+    for x in matched:
+        px = pids.get(x)
+        if x not in failed_shas and px not in failed_pids:
+            continue
+        fixed = False
+        for _, commits in seqs:
+            pos = {pid: i for i, (_, pid) in enumerate(commits)}
+            if px not in pos:
+                continue
+            fixed = any(y in covered and order.get(y, -1) < order[x] and pids.get(y) in pos
+                        and pos[pids[y]] > pos[px] for y in shas)
+            if fixed:
+                break
+        if not fixed:
+            out.add(x)
     return out
 
 
@@ -128,26 +169,28 @@ def round_roles(repo, unreviewed, findings=None):
 
 
 @lru_cache(maxsize=None)
-def parent_tree(repo, sha):
-    return git(repo, "rev-parse", "-q", "--verify", f"{sha}^^{{tree}}")
+def trees(repo, sha):
+    """(parent tree, own tree). Patch ids ignore line numbers, so the same hunk
+    placed elsewhere in a file shares a patch id; the own tree tells them apart."""
+    return (git(repo, "rev-parse", "-q", "--verify", f"{sha}^^{{tree}}"),
+            git(repo, "rev-parse", "-q", "--verify", f"{sha}^{{tree}}"))
 
 
-def covered_by_tree(repo, pids, seqs):
-    """Commits whose patch a pass reviewed on the very same tree: the code they
-    produce is byte for byte what was reviewed, whatever history led there."""
+def covered_by_tree(repo, pids, seqs, out):
+    """Adds to out the commits whose patch a pass reviewed on the same parent
+    tree, producing the same tree: the code is what was reviewed, whatever
+    history led there."""
     reviewed = {}
     for _, commits in seqs:
         for sha, pid in commits:
             reviewed.setdefault(pid, []).append(sha)
-    out = set()
     for sha, pid in pids.items():
         if pid not in reviewed:
             continue
         check_deadline()
-        mine = parent_tree(repo, sha)
-        if mine and any(parent_tree(repo, r) == mine for r in reviewed[pid]):
+        mine = trees(repo, sha)
+        if mine[0] and mine[1] and any(trees(repo, r) == mine for r in reviewed[pid]):
             out.add(sha)
-    return out
 
 
 def required_roles(repo, shas):
@@ -432,9 +475,11 @@ def status(repo, head="HEAD"):
         pids, seqs = patch_ids(repo, span), reviewed_sequences(repo)
         matched = covered_by_patch(repo, base, pids, seqs)
         try:
-            matched |= covered_by_tree(repo, {s: p for s, p in pids.items() if s not in matched}, seqs)
+            covered_by_tree(repo, {s: p for s, p in pids.items() if s not in matched}, seqs, matched)
         except OutOfTime:
             timed_out.append("tree")
+    if matched:
+        matched -= excuse_findings(repo, shas, pids, matched, below, seqs)
     unreviewed = [s for s in shas if s not in below and s not in matched]
     findings = standing_findings(repo, unreviewed)
     # Past MAX_COMMITS the older commits are never examined. A passed commit
@@ -582,14 +627,17 @@ def record(payload):
               file=sys.stderr)
         return 2
     # Who the round needs is worked out before the lock: it runs status, which
-    # can take seconds, and parallel reviewers must not wait on each other. A
-    # marker that already knows its roles skips it.
+    # can take seconds, and parallel reviewers must not wait on each other. It
+    # runs for every pass, to check the pass against standing findings.
     pre = load(repo, sha)
     st = status(repo, sha) if "required" not in pre or found["verdict"] == "pass" else None
     needed = None if "required" in pre else (st["required_roles"] or FULL)
-    if st and found["verdict"] == "pass":
-        unchanged = [f for f in st["standing_findings"].get(role, [])
-                     if f != sha and git(repo, "diff", "--quiet", f, sha) is not None]
+    if st and found["verdict"] == "pass" and st["standing_findings"].get(role):
+        # The round changes nothing but copies of the failed patches: an empty
+        # commit, or a rebase that carried them unchanged.
+        failed = {own_patch_id(repo, f) for f in st["standing_findings"][role]}
+        new = {own_patch_id(repo, c) for c in st["unreviewed"]} - {None}
+        unchanged = st["standing_findings"][role] if new <= failed else []
         if unchanged:
             # Asking again about code that has not changed since the finding
             # does not clear it.

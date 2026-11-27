@@ -45,6 +45,8 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
 ## Limits
 
+- Patch ids ignore hunk line numbers, so the same hunk added at another spot with identical context reads as the same patch. The same-tree rule checks the resulting tree and catches that; the ordered match after a rebase cannot, and relies on the reviewers reading the whole branch for context.
+
 - After three rounds that still end in `fix-required`, stop and show the user the open findings.
 - When a blocking finding looks wrong, ask the user. Never argue around it, and never write files under `review-gate/` yourself.
 - Only the user turns the gate off, with `touch ~/.claude/.review-gate-off`. Never create that file.
