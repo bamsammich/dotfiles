@@ -7,6 +7,7 @@ set -u
 # (executable_review-gate beside it).
 G="$(dirname "$0")/review-gate"; [ -x "$G" ] || G="$(dirname "$0")/executable_review-gate"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+export REVIEW_GATE_STATE="$T/state"  # keep refusal counters and the log out of real state
 export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false \
   GIT_CONFIG_KEY_1=tag.gpgsign GIT_CONFIG_VALUE_1=false
 q() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
@@ -135,11 +136,32 @@ check deny  "git push -u upstream main" "$T/w2"
 
 # record: an unfilled template line is not a pass.
 H="$(git -C "$W" rev-parse unreviewed)"
-printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass | fix-required\n' "$W" "$H" |
-  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:., stop_hook_active:true}' | "$G" record 2>/dev/null
+# The reviewer is sent back MAX_REFUSALS times (exit 2), then the gate gives up
+# (exit 0), and nothing is recorded either way.
+codes=""
+for _ in 1 2 3; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass | fix-required\n' "$W" "$H" |
+    jq -Rs '{agent_type:"security-reviewer", agent_id:"template-test", last_assistant_message:., stop_hook_active:true}' |
+    "$G" record 2>/dev/null
+  codes="$codes$?"
+done
 if [ -e "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review-gate/$H.json" ]; then
   echo "FAIL  template VERDICT line was recorded"; fails=$((fails+1))
 else echo "ok    template VERDICT line not recorded"; fi
+if [ "$codes" = "220" ]; then echo "ok    an unreadable report is refused twice, then given up"
+else echo "FAIL  refusal exit codes: want 220 got $codes"; fails=$((fails+1)); fi
+
+# A draft header in the final message must not beat the handback that follows.
+D="$(git -C "$W" rev-parse unreviewed)"
+TP2="$T/draft-transcript.jsonl"
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: fix-required\n' "$W" "$D" |
+  jq -Rsc '{message:{role:"assistant",content:[{type:"tool_use",name:"SubagentHandback",input:{message:.}}]}}' > "$TP2"
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$W" "$D" |
+  jq -Rs --arg tp "$TP2" '{agent_type:"security-reviewer", agent_id:"draft-test", agent_transcript_path:$tp, last_assistant_message:.}' |
+  "$G" record 2>/dev/null
+if jq -e '.security.verdict == "fix-required"' "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review-gate/$D.json" >/dev/null 2>&1; then
+  echo "ok    the handback beats a draft header in the final message"
+else echo "FAIL  a draft header in the final message beat the handback"; fails=$((fails+1)); fi
 
 # record: the handback reaches the transcript after the hook fires, and the
 # payload says stop_hook_active on that first stop. It must still be recorded.
@@ -180,6 +202,13 @@ q "$S" checkout -b b3 b1; printf 'one\nfix \n' > "$S/one"; q "$S" commit -am ws
 expect "a whitespace-only change is a new patch" 1 "$(unrev b3)"
 q "$S" checkout -b b4 "$OLD1"; echo two > "$S/two"; echo extra >> "$S/two"; q "$S" add two; q "$S" commit -m two
 expect "a commit whose patch changed in a rebase needs review" 1 "$(unrev b4)"
+q "$S" checkout -b b5 main; q "$S" cherry-pick "$(git -C "$S" rev-parse b2)"
+expect "a reviewed patch cherry-picked without the commits below it needs review" 1 "$(unrev b5)"
+q "$S" checkout -b c main
+for f in x y z; do echo "$f" > "$S/$f"; q "$S" add "$f"; q "$S" commit -m "$f"; done
+pass "$(git -C "$S" rev-parse c)"
+q "$S" checkout -b b6 c; q "$S" rebase -q --onto c~2 c~1 b6
+expect "a reviewed patch whose reviewed predecessor was dropped needs review" 1 "$(unrev b6)"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |

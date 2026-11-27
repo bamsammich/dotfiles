@@ -12,7 +12,7 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
 1. **Commit first.** Reviews are keyed to a commit, so uncommitted changes are never covered. Commit everything you intend to push.
 
-2. **Find the commits.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `unreviewed` and `needs_review`. When `needs_review` is false, there is nothing to do. `unreviewed` lists the commits no pass covers yet, newest first. A pass covers every commit from `base` to the reviewed commit, and a commit counts as covered when its patch matches one of those (`git patch-id --verbatim`). A rebase or a cascade up a stack therefore leaves only new or changed patches in `unreviewed`.
+2. **Find the commits.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `unreviewed` and `needs_review`. When `needs_review` is false, there is nothing to do. `unreviewed` lists the commits no pass covers yet, newest first. A pass covers every commit from `base` to the reviewed commit. A later commit counts as covered when its patch matches one of those (`git patch-id --verbatim`) and every patch the pass reviewed before it is still below it, in the same order. A rebase or a cascade up a stack therefore leaves only new or changed patches in `unreviewed`, and a cherry-pick, a dropped commit or a reorder asks for review again.
 
    In a stack of branches, run `status` on the top branch and review there. A pass at the top covers every branch below it.
 
