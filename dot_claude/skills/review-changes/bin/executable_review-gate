@@ -130,11 +130,57 @@ def parse(text):
     return {"repo": field("REPO"), "sha": field("REVIEWED"), "verdict": verdict}
 
 
+LOG = Path.home() / ".claude" / "state" / "review-gate.log"
+ATTEMPTS = Path.home() / ".claude" / "state" / "review-gate-attempts"
+# How many times one reviewer is sent back to deliver its report again before
+# the gate gives up on it. Claude Code sets stop_hook_active on a reviewer's
+# first stop too, so that flag cannot tell a retry from a first try.
+MAX_REFUSALS = 2
+
+
+def log(role, payload, outcome):
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        with LOG.open("a") as f:
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {role} "
+                    f"agent={payload.get('agent_id')} {outcome}\n")
+    except OSError:
+        pass
+
+
+def refusals(payload):
+    """Counts this reviewer's refusals, returning the count before this one."""
+    agent = re.sub(r"[^\w-]", "_", str(payload.get("agent_id") or "unknown"))
+    f = ATTEMPTS / agent
+    try:
+        n = int(f.read_text())
+    except (OSError, ValueError):
+        n = 0
+    try:
+        ATTEMPTS.mkdir(parents=True, exist_ok=True)
+        f.write_text(str(n + 1))
+    except OSError:
+        pass
+    return n
+
+
+def read_report(payload):
+    """The parsed report. The hook can fire before the reviewer's handback reaches
+    its transcript, so an unreadable report is read again for a few seconds."""
+    found = parse(final_report(payload))
+    for _ in range(12):
+        if found or not payload.get("agent_transcript_path"):
+            break
+        time.sleep(0.25)
+        found = parse(final_report(payload))
+    return found
+
+
 def record(payload):
     role = ROLES.get(payload.get("agent_type") or "")
     if not role:
         return 0
-    found = parse(final_report(payload))
+    found = read_report(payload)
     problem = None
     if not found:
         problem = ("no REPO, REVIEWED and VERDICT header lines in the report, or VERDICT is not "
@@ -147,9 +193,11 @@ def record(payload):
         elif not sha:
             problem = f"REVIEWED {found['sha']!r} is not a commit in {repo}"
     if problem:
-        if payload.get("stop_hook_active"):
+        if refusals(payload) >= MAX_REFUSALS:
+            log(role, payload, f"gave up: {problem}")
             print(f"review-gate: {role} review not recorded: {problem}", file=sys.stderr)
             return 0
+        log(role, payload, f"refused: {problem}")
         print(f"review-gate could not record this review: {problem}. Deliver your report again, "
               "starting with the three lines REPO, REVIEWED and VERDICT exactly as your instructions show.",
               file=sys.stderr)
@@ -162,6 +210,7 @@ def record(payload):
     tmp = d / f".{sha}.{os.getpid()}.tmp"
     tmp.write_text(json.dumps(m, indent=1))
     tmp.replace(d / f"{sha}.json")
+    log(role, payload, f"recorded {found['verdict']} for {sha} in {repo}")
     return 0
 
 

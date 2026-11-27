@@ -141,6 +141,20 @@ if [ -e "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review
   echo "FAIL  template VERDICT line was recorded"; fails=$((fails+1))
 else echo "ok    template VERDICT line not recorded"; fi
 
+# record: the handback reaches the transcript after the hook fires, and the
+# payload says stop_hook_active on that first stop. It must still be recorded.
+L="$(git -C "$W" rev-parse main)"
+TP="$T/late-transcript.jsonl"; : > "$TP"
+( sleep 1
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$W" "$L" |
+    jq -Rsc '{message:{role:"assistant",content:[{type:"tool_use",name:"SubagentHandback",input:{message:.}}]}}' >> "$TP" ) &
+jq -n --arg tp "$TP" '{agent_type:"staff-reviewer", agent_id:"late-test", agent_transcript_path:$tp, stop_hook_active:true}' |
+  "$G" record 2>/dev/null
+wait
+if jq -e '.staff.verdict == "pass"' "$(git -C "$W" rev-parse --path-format=absolute --git-common-dir)/review-gate/$L.json" >/dev/null 2>&1; then
+  echo "ok    a handback written after the hook fired is recorded"
+else echo "FAIL  a handback written after the hook fired was not recorded"; fails=$((fails+1)); fi
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
