@@ -44,12 +44,12 @@ TESTS_ONLY = ["staff"]
 LEGACY = ["security", "staff"]
 SMALL_LINES = 50
 TEST_OR_DOC = re.compile(r"(^|/)(tests?|testdata|__tests__)/|_test\.(go|py|ts|tsx|js)$|(^|/)test_[^/]*\.py$|"
-                         r"\.(test|spec)\.(ts|tsx|js)$|(^|/)docs/[^/]*\.md$|(^|/)README[^/]*$")
+                         r"\.(test|spec)\.(ts|tsx|js)$|(^|/)docs/[^/]*\.md$|(^|/)README(\.(md|txt|rst))?$")
 # Files that steer agents or run on their own are never tests or docs, whatever
 # their name: agent and skill prompts, CLAUDE.md and AGENTS.md, chezmoi run
-# scripts, CI workflows and git hooks.
+# scripts and templates, CI workflows and git hooks.
 POLICY = re.compile(r"(^|/)(dot_claude|\.claude|agents|skills|\.github|\.githooks)/|(^|/)(CLAUDE|AGENTS)\.md$|"
-                    r"(^|/)run_|conftest\.py$")
+                    r"(^|/)run_|conftest\.py$|\.tmpl$")
 OFF = Path.home() / ".claude" / ".review-gate-off"
 SKILL = "review-changes"
 
@@ -77,7 +77,10 @@ def load(repo, sha):
 
 
 def is_passed(m):
-    """Whether a marker holds a pass from every role its round required."""
+    """Whether a marker holds a pass from every role its round required, and
+    no fix-required from any role, required or not."""
+    if any(m.get(r, {}).get("verdict") == "fix-required" for r in ROLES.values()):
+        return False
     return all(m.get(r, {}).get("verdict") == "pass" for r in m.get("required") or LEGACY)
 
 
@@ -103,8 +106,8 @@ def required_roles(repo, shas):
             if POLICY.search(path) or not TEST_OR_DOC.search(path):
                 tests_only = False
             total += int(added) + int(deleted)
-    if total > SMALL_LINES:
-        return FULL
+            if total > SMALL_LINES:
+                return FULL
     return TESTS_ONLY if tests_only else SMALL
 
 
@@ -506,14 +509,15 @@ def record(payload):
               file=sys.stderr)
         return 2
     # Who the round needs is worked out before the lock: it runs status, which
-    # can take seconds, and parallel reviewers must not wait on each other.
-    needed = status(repo, sha)["required_roles"] or FULL
+    # can take seconds, and parallel reviewers must not wait on each other. A
+    # marker that already knows its roles skips it.
+    needed = None if "required" in load(repo, sha) else (status(repo, sha)["required_roles"] or FULL)
     with marker_lock(repo):
         m = load(repo, sha)
         if "required" not in m:
             # The round's first verdict fixes which roles it needs. A marker
             # already holding verdicts predates the intent reviewer.
-            m["required"] = LEGACY if any(r in m for r in ROLES.values()) else needed
+            m["required"] = LEGACY if any(r in m for r in ROLES.values()) else (needed or FULL)
         m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         for k in ("covers", "sequence", "commits"):

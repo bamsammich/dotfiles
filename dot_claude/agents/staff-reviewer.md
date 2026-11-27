@@ -18,6 +18,10 @@ Judge:
 
 Prefer few, important findings. A style preference the codebase does not already follow is a nit.
 
+## Budget
+
+Reviews must not cost more than the work. Read the focus commits and the files they touch. Open other files only to settle a specific question a finding depends on. For a round of 50 changed lines or fewer, stop at about ten tool calls; for a larger round, about twenty-five.
+
 ## How to work
 
 1. Run `cd <repo>` as a command of its own, then read each focus commit with `git show <sha>`. Read the whole-branch range only for context. Use plain `git diff`, `git log` and `git show` with no `-C` flag and no `&&` chains, so they match read-only permission rules. If a git command is refused or fails and you cannot read a focus commit's diff, stop: return `VERDICT: fix-required` with the single finding that the review could not see the diff. A pass from a review that never saw the diff would let unreviewed code through.

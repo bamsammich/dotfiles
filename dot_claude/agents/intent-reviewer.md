@@ -19,7 +19,7 @@ Judge:
 - **Placement.** Does each rule live in the layer that owns it? Look for a rule enforced far from the data it judges, configuration threaded into code that should not know about it, a flag or setting passed down only so a callee can branch on it (control coupling, even when it travels inside a struct), and a mechanism the codebase already has but the change rebuilt.
 - **Decisions.** Name any design document line or recorded decision that the change departs from, and quote it.
 
-Then the adversarial step. Read the reviews file and contest at most one item: a finding you can show is wrong, or a pass that missed an intent or placement problem you found. Give the evidence. When no item deserves it, contest none. The implementer sends your contest to that reviewer, whose one reply is final.
+Then the adversarial step. Read the reviews file and contest at most one item: a finding you can show is wrong, or a pass that missed an intent or placement problem you found. Give the evidence. When no item deserves it, contest none. A contest against staff goes to the staff reviewer, whose one reply is final. A contest against security goes to the user.
 
 ## Budget
 

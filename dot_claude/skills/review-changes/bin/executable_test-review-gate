@@ -396,6 +396,24 @@ LEG="$(git -C "$TR" rev-parse HEAD)"
 printf '{"security":{"verdict":"pass"},"staff":{"verdict":"pass"}}' \
   > "$(git -C "$TR" rev-parse --path-format=absolute --git-common-dir)/review-gate/$LEG.json"
 expect "a legacy marker with security and staff passes" true "$("$G" status "$TR" | jq -r '.passed')"
+# A verdict recorded through the hook onto a marker that predates the intent
+# reviewer keeps it at security and staff.
+echo legacy2 >> "$TR/app.go"; seq 1 60 >> "$TR/app.go"; q "$TR" commit -am legacy2
+printf '{"security":{"verdict":"pass"}}' \
+  > "$(git -C "$TR" rev-parse --path-format=absolute --git-common-dir)/review-gate/$(git -C "$TR" rev-parse HEAD).json"
+rec staff-reviewer
+expect "a staff verdict on a legacy marker completes it" true "$("$G" status "$TR" | jq -r '.passed')"
+# A fix-required from a role the round did not require still blocks.
+echo 'func TestY() {}' >> "$TR/app_test.go"; q "$TR" commit -am tests
+rec staff-reviewer
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: fix-required\n' "$TR" "$(git -C "$TR" rev-parse HEAD)" |
+  jq -Rs '{agent_type:"security-reviewer", last_assistant_message:.}' | "$G" record
+expect "an unrequired reviewer's fix-required still blocks" true "$("$G" status "$TR" | jq -r '.needs_review')"
+q "$TR" reset -q --hard HEAD~1
+mkdir -p "$TR/dot_config"; echo '{{ output "sh" "-c" "id" }}' > "$TR/dot_config/README.md.tmpl"
+q "$TR" add dot_config; q "$TR" commit -m tmpl
+expect "a chezmoi template named like a README is not a doc" "security,staff" "$(roles)"
+q "$TR" reset -q --hard HEAD~1
 # Two reviewers recording at once both land.
 echo race >> "$TR/app.go"; q "$TR" commit -am race
 rec security-reviewer & rec staff-reviewer & wait

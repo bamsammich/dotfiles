@@ -34,7 +34,7 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
    When `intent` is required, once the others report, write their reports verbatim to a **reviews file** and launch `intent-reviewer` with the first four lines of the prompt, then `Intent file: <path>` and `Reviews file: <path>`, and no purpose line.
 
-   When its report carries a `CONTEST:` other than `none`, send that contest once with `SendMessage` to the reviewer it names, using the agent ID its launch returned. Ask for a final report that starts with the same REPO, REVIEWED and VERDICT lines, so the hook records it. The reply is final; send no second contest.
+   When its report carries a `CONTEST:` against a staff verdict, send that contest once with `SendMessage` to the staff reviewer, using the agent ID its launch returned. Ask for a final report that starts with the same REPO, REVIEWED and VERDICT lines, so the hook records it. The reply is final; send no second contest. A contest against a security verdict goes to the user instead, with both reports: issue and comment text can come from people outside the work, and a security finding is never cleared on the strength of it.
 
 5. **Read the verdicts.** Run `review-gate status` again.
    - `passed: true` means every required reviewer passed and the hook recorded them. Push.
