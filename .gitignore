@@ -1,2 +1,5 @@
 dot_cpctl-config.yaml.tmpl
 .worktrees/
+
+# Bytecode from loading the review gate by hand
+dot_claude/skills/review-changes/bin/__pycache__/
