@@ -59,6 +59,9 @@ def passed(repo, sha):
     return all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values())
 
 
+# Both a branch's patches and a pass's sequence keep their newest MAX_COMMITS
+# commits. On a longer branch the two windows start at different commits, the
+# match fails, and the gate asks for review again.
 MAX_COMMITS = 500
 
 
@@ -111,7 +114,7 @@ def sequence(repo, sha, m):
 
 
 def reviewed_sequences(repo):
-    """The patch sequence of every passed marker in the repository."""
+    """(sha, sequence) for every passed marker in the repository."""
     out = []
     try:
         files = list(marker_dir(repo).glob("*.json"))
@@ -125,22 +128,41 @@ def reviewed_sequences(repo):
         if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
             seq = sequence(repo, f.stem, m)
             if seq:
-                out.append(seq)
+                out.append((f.stem, seq))
     return out
 
 
-def covered_by_patch(pids, seqs):
+def landed(repo, sha, base):
+    """Patch ids that reached the default branch after the pass at sha forked
+    from it: a bottom branch of a stack that merged after the pass."""
+    if not base:
+        return set()
+    fork = git(repo, "merge-base", sha, base)
+    return set(patch_ids(repo, [f"{fork}..{base}"]).values()) if fork else set()
+
+
+def covered_by_patch(repo, base, pids, seqs):
     """Commits whose patch a pass covered in context. pids maps each commit on the
     branch to its patch id, oldest first. A pass covers a commit when the
     branch's patches that the pass also reviewed, up to and including that
-    commit, are the start of the pass's own sequence. A commit the pass never
-    saw may sit between them, since it gets its own review. A patch the pass
-    reviewed but the branch dropped, reordered or never had ends the match."""
+    commit, are the start of the pass's own sequence, less any of its patches
+    that have since landed on the default branch. A commit no pass has seen may
+    sit between them, since it gets its own review. A patch the pass reviewed
+    but the branch dropped, reordered or never had ends the match, and so does
+    a patch another pass reviewed, since no one reviewed the two together."""
     out = set()
-    for seq in seqs:
+    branch = set(pids.values())
+    seen = {pid for _, seq in seqs for pid in seq}
+    for marker, seq in seqs:
+        if not branch & set(seq):
+            continue
+        merged = landed(repo, marker, base)
+        seq = [pid for pid in seq if pid not in merged]
         known, j = set(seq), 0
         for sha, pid in pids.items():
             if pid not in known:
+                if pid in seen:
+                    break
                 continue
             if j >= len(seq) or seq[j] != pid:
                 break
@@ -175,7 +197,7 @@ def status(repo, head="HEAD"):
     shas = (git(repo, "rev-list", f"--max-count={MAX_COMMITS}", *span) or "").split()
     last = next((s for s in shas if passed(repo, s)), None)
     below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
-    matched = covered_by_patch(patch_ids(repo, span), reviewed_sequences(repo))
+    matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
     unreviewed = [s for s in shas if s not in below and s not in matched]
     return {
         "repo": repo,

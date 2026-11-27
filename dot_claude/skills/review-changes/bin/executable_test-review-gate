@@ -210,6 +210,33 @@ pass "$(git -C "$S" rev-parse c)"
 q "$S" checkout -b b6 c; q "$S" rebase -q --onto c~2 c~1 b6
 expect "a reviewed patch whose reviewed predecessor was dropped needs review" 1 "$(unrev b6)"
 
+# The bottom branch of a stack merges into main, and the top is rebased onto
+# main. The top's patch is unchanged, so it needs no review.
+M="$T/merged"; git init -q --bare "$M.git"; git clone -q "$M.git" "$M" 2>/dev/null
+q "$M" commit --allow-empty -m init; q "$M" push origin HEAD:main; q "$M" remote set-head origin main
+mpass() { for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$M" "$1" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done; }
+q "$M" checkout -b m1; echo one > "$M/one"; q "$M" add one; q "$M" commit -m one
+q "$M" checkout -b m2; echo two > "$M/two"; q "$M" add two; q "$M" commit -m two
+mpass "$(git -C "$M" rev-parse m2)"
+q "$M" push origin m1:main; q "$M" fetch -q origin
+q "$M" checkout -q main 2>/dev/null || q "$M" checkout -b main origin/main
+q "$M" reset -q --hard origin/main
+q "$M" checkout -b m3 main; echo two > "$M/two"; q "$M" add two; q "$M" commit -m two
+expect "a top branch rebased onto a merged bottom needs no review" 0 \
+  "$("$G" status "$M" | jq -r '.unreviewed | length')"
+
+# Two passes reviewed a,b and c,d. A branch that interleaves them was never
+# reviewed in that order.
+q "$S" checkout -b i1 main; for f in ia ib; do echo "$f" > "$S/$f"; q "$S" add "$f"; q "$S" commit -m "$f"; done
+pass "$(git -C "$S" rev-parse i1)"
+q "$S" checkout -b i2 main; for f in ic id; do echo "$f" > "$S/$f"; q "$S" add "$f"; q "$S" commit -m "$f"; done
+pass "$(git -C "$S" rev-parse i2)"
+q "$S" checkout -b i3 main
+for c in i2~1 i1~1 i1 i2; do q "$S" cherry-pick "$(git -C "$S" rev-parse "$c")"; done
+expect "commits from two passes interleaved need review" 1 "$([ "$(unrev i3)" -gt 0 ] && echo 1 || echo 0)"
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
