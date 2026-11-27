@@ -109,7 +109,7 @@ def sequence(repo, sha, m):
     commits = list(patch_ids(repo, span).items())
     # A pass over more than MAX_COMMITS would lose its oldest entries and match
     # out of context, so it covers nothing by patch.
-    if git(repo, "rev-list", "--count", *span) != str(len(commits)) and len(commits) == MAX_COMMITS:
+    if int(git(repo, "rev-list", "--count", *span) or 0) > MAX_COMMITS:
         commits = []
     m["commits"] = [list(c) for c in commits]
     m.pop("covers", None)
@@ -244,9 +244,13 @@ def status(repo, head="HEAD"):
     below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
     matched = covered_by_patch(repo, base, patch_ids(repo, span), reviewed_sequences(repo))
     unreviewed = [s for s in shas if s not in below and s not in matched]
-    # Past MAX_COMMITS the older commits are never examined, so fail closed.
-    if len(shas) == MAX_COMMITS and git(repo, "rev-list", "--count", *span) != str(MAX_COMMITS):
-        unreviewed = shas
+    # Past MAX_COMMITS the older commits are never examined. A passed commit
+    # covers its ancestors, so they are reviewed when the oldest examined
+    # commit sits below one. Otherwise only ancestry counts, and a patch match
+    # does not, since the commits under it were never seen.
+    if len(shas) == MAX_COMMITS and shas[-1] not in below and \
+            git(repo, "rev-list", "--count", *span) != str(MAX_COMMITS):
+        unreviewed = [s for s in shas if s not in below]
     return {
         "repo": repo,
         "head": head,

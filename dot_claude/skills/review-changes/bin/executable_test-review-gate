@@ -291,6 +291,23 @@ q "$S" checkout -b i3 main
 for c in i2~1 i1~1 i1 i2; do q "$S" cherry-pick "$(git -C "$S" rev-parse "$c")"; done
 expect "commits from two passes interleaved need review" 1 "$([ "$(unrev i3)" -gt 0 ] && echo 1 || echo 0)"
 
+# A branch longer than the 500 commits status examines. Unreviewed, it fails
+# closed. Passed at its head, every commit below is reviewed, and only a new
+# commit on top needs review.
+L="$T/long"; git clone -q "$T/origin" "$L" 2>/dev/null; q "$L" checkout -b long
+c="$(git -C "$L" rev-parse HEAD)"; tree="$(git -C "$L" rev-parse 'HEAD^{tree}')"
+for i in $(seq 501); do c="$(git -C "$L" commit-tree "$tree" -p "$c" -m "long $i")"; done
+q "$L" reset -q --hard "$c"
+expect "an unreviewed branch over 500 commits needs review" 1 \
+  "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$L" "$c" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+expect "a passed branch over 500 commits needs no review" 0 "$("$G" status "$L" | jq -r '.unreviewed | length')"
+q "$L" commit --allow-empty -m "one more"
+expect "a commit on a passed branch over 500 commits needs review alone" 1 \
+  "$("$G" status "$L" | jq -r '.unreviewed | length')"
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
