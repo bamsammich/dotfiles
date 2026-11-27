@@ -180,7 +180,7 @@ def trees(repo, shas):
     def log(revs):
         if not revs:
             return {}
-        out = git(repo, "log", "--no-walk=unsorted", "--format=%H %T %P", *revs) or ""
+        out = git(repo, "log", "--no-walk=unsorted", "--ignore-missing", "--format=%H %T %P", *revs) or ""
         return {p[0]: p[1:] for p in (line.split() for line in out.splitlines()) if len(p) >= 2}
     own = log(sorted(set(shas)))
     parents = log(sorted({v[1] for v in own.values() if len(v) > 1}))
@@ -653,9 +653,11 @@ def record(payload):
     if st and found["verdict"] == "pass" and st["standing_findings"].get(role):
         # The round changes nothing but copies of the failed patches: an empty
         # commit, or a rebase that carried them unchanged.
-        failed = {own_patch_id(repo, f) for f in st["standing_findings"][role]}
+        # A verdict changed on the failed commit itself, as after a contest, is
+        # the reviewer's call; only security is held there, below.
+        failed = {own_patch_id(repo, f) for f in st["standing_findings"][role] if f != sha}
         new = {own_patch_id(repo, c) for c in st["unreviewed"]} - {None}
-        unchanged = st["standing_findings"][role] if new <= failed else []
+        unchanged = [f for f in st["standing_findings"][role] if f != sha] if failed and new <= failed else []
         if unchanged:
             # Asking again about code that has not changed since the finding
             # does not clear it.

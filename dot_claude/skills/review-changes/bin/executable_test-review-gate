@@ -491,6 +491,17 @@ q "$FX" cherry-pick "$BAD" fx
 expect "a failed commit rebased with its fix above it needs only the new commit" 1 \
   "$("$G" status "$FX" | jq -r '.unreviewed | length')"
 
+# Staff changes its own verdict on the same commit after a contest.
+CT="$T/contest"; git clone -q "$T/origin" "$CT" 2>/dev/null; q "$CT" checkout -b c
+seq 1 10 > "$CT/x.go"; q "$CT" add x.go; q "$CT" commit -m x
+H="$(git -C "$CT" rev-parse HEAD)"
+for v in "security-reviewer pass" "staff-reviewer fix-required" "staff-reviewer pass"; do
+  set -- $v
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: %s\n' "$CT" "$H" "$2" |
+    jq -Rs --arg t "$1" '{agent_type:$t, last_assistant_message:.}' | "$G" record 2>/dev/null; done
+expect "staff can change its own verdict on the same commit after a contest" true \
+  "$("$G" status "$CT" | jq -r '.passed')"
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
