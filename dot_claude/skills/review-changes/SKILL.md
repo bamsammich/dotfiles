@@ -12,7 +12,9 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
 1. **Commit first.** Reviews are keyed to a commit, so uncommitted changes are never covered. Commit everything you intend to push.
 
-2. **Find the range.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `review_from` and `needs_review`. When `needs_review` is false, there is nothing to do. `review_from` is the newest commit that already passed both reviews, or `base` when none has, so a follow-up push reviews only its new commits.
+2. **Find the commits.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `unreviewed` and `needs_review`. When `needs_review` is false, there is nothing to do. `unreviewed` lists the commits no pass covers yet, newest first. A pass covers every commit from `base` to the reviewed commit, and a commit counts as covered when its patch matches one of those (`git patch-id --verbatim`). A rebase or a cascade up a stack therefore leaves only new or changed patches in `unreviewed`.
+
+   In a stack of branches, run `status` on the top branch and review there. A pass at the top covers every branch below it.
 
 3. **Write the purpose.** Two to four sentences on what the change is for and any constraint the user stated. Give the reviewers nothing else from this conversation, so their reads are not anchored on yours.
 
@@ -21,16 +23,16 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
    ```
    Repository: <absolute path>
    Head commit: <full head sha>
-   Focus range: <review_from>..<head>
+   Focus commits: <the unreviewed list, oldest first>
    Whole-branch range for context: <base>..<head>
    Purpose: <the sentences from step 3>
    ```
 
-   When `base` is null (no default branch found), say the focus range is every commit up to the head.
+   Tell the reviewers to review the focus commits only, and to read the rest of the branch as context.
 
 5. **Read the verdicts.** Run `review-gate status` again.
    - `passed: true` means both reviewers passed and the hook recorded them. Push.
-   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. Take the range from `status` again, never from memory. `review_from` moves only when a commit passes both reviews, so after a failed round it still points where the failed review started, and both reviewers run again on that whole range, in parallel. Giving them only the fix commits would record a pass for code nobody reviewed.
+   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. Take the list from `status` again, never from memory. A failed round covers nothing, so after it `unreviewed` still holds the commits the failed review looked at, plus the fix. Both reviewers run again on that whole list, in parallel. Giving them only the fix commits would record a pass for code nobody reviewed.
    - A reviewer passed but `status` shows no marker for it: the hook could not read the report header. Run that reviewer again.
 
 6. **Handle the rest.** Fix a `should-fix` finding when the fix is small and plainly right. Otherwise list it under a "Review notes" heading in the pull request description. Drop nits unless the fix is trivial.

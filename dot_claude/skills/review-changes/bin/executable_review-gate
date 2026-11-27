@@ -10,7 +10,9 @@
                               commit passed both reviews.
 
 Markers live in <git common dir>/review-gate/<sha>.json, shared by every
-worktree of a repository and never committed. `touch ~/.claude/.review-gate-off`
+worktree of a repository and never committed. A commit counts as reviewed when
+it is an ancestor of a passed commit, or when its patch matches one that a pass
+covered, so a rebase or a cascade up a stack asks for review of new patches only. `touch ~/.claude/.review-gate-off`
 turns the gate off.
 """
 import json
@@ -55,6 +57,68 @@ def passed(repo, sha):
     return all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values())
 
 
+def patch_ids(repo, span):
+    """sha -> patch id for each commit in span that has a diff. Merges and empty
+    commits get none. --verbatim keeps whitespace, so a whitespace-only change
+    reads as a new patch."""
+    log = subprocess.run(["git", "-C", str(repo), "log", "-p", "--no-color", "--no-ext-diff",
+                          "--no-textconv", "--no-renames", "--format=commit %H", *span],
+                         capture_output=True)
+    if log.returncode != 0 or not log.stdout:
+        return {}
+    r = subprocess.run(["git", "-C", str(repo), "patch-id", "--verbatim"],
+                       input=log.stdout, capture_output=True)
+    out = {}
+    for line in r.stdout.decode(errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            out[parts[1]] = parts[0]
+    return out
+
+
+def save(repo, sha, m):
+    d = marker_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f".{sha}.{os.getpid()}.tmp"
+    tmp.write_text(json.dumps(m, indent=1))
+    tmp.replace(d / f"{sha}.json")
+
+
+def covers(repo, sha, m):
+    """Patch ids of the commits a pass at sha covered: every commit from the fork
+    point to sha. Markers written before this field existed get it on first read."""
+    if isinstance(m.get("covers"), list):
+        return set(m["covers"])
+    if not git(repo, "rev-parse", "--verify", "-q", sha + "^{commit}"):
+        return set()
+    ref = base_ref(repo)
+    base = git(repo, "merge-base", sha, ref) if ref else None
+    ids = sorted(set(patch_ids(repo, [f"{base}..{sha}"] if base else [sha, "--not", "--remotes"]).values()))
+    m["covers"] = ids
+    try:
+        save(repo, sha, m)
+    except OSError:
+        pass
+    return set(ids)
+
+
+def reviewed_patches(repo):
+    """Patch ids every passed marker in the repository covered."""
+    out = set()
+    try:
+        files = list(marker_dir(repo).glob("*.json"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            m = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
+            out |= covers(repo, f.stem, m)
+    return out
+
+
 def base_ref(repo):
     """The remote default branch. Local branches never count: when HEAD is local
     main, its merge-base with itself would hide every unpushed commit."""
@@ -80,15 +144,22 @@ def status(repo, head="HEAD"):
     span = [f"{base}..{head}"] if base else [head, "--not", "--remotes"]
     shas = (git(repo, "rev-list", "--max-count=500", *span) or "").split()
     last = next((s for s in shas if passed(repo, s)), None)
+    below = set((git(repo, "rev-list", f"{base}..{last}" if base else last) or "").split()) if last else set()
+    pids, seen = patch_ids(repo, span), reviewed_patches(repo)
+    unreviewed = [s for s in shas if s not in below and pids.get(s, "-") not in seen]
+    oldest = unreviewed[-1] if unreviewed else None
     return {
         "repo": repo,
         "head": head,
         "base_ref": ref,
         "base": base,
         "last_passed": last,
-        "review_from": last or base,
-        "passed": head == last,
-        "needs_review": bool(shas) and head != last,
+        # The commits no pass covers, newest first. A rebase keeps a commit's
+        # patch, so only new or changed patches land here.
+        "unreviewed": unreviewed,
+        "review_from": (git(repo, "rev-parse", "-q", "--verify", oldest + "^") or base) if oldest else head,
+        "passed": bool(shas) and not unreviewed,
+        "needs_review": bool(unreviewed),
     }
 
 
@@ -202,14 +273,13 @@ def record(payload):
               "starting with the three lines REPO, REVIEWED and VERDICT exactly as your instructions show.",
               file=sys.stderr)
         return 2
-    d = marker_dir(repo)
-    d.mkdir(parents=True, exist_ok=True)
     m = load(repo, sha)
     m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    tmp = d / f".{sha}.{os.getpid()}.tmp"
-    tmp.write_text(json.dumps(m, indent=1))
-    tmp.replace(d / f"{sha}.json")
+    m.pop("covers", None)
+    save(repo, sha, m)
+    if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
+        covers(repo, sha, m)
     log(role, payload, f"recorded {found['verdict']} for {sha} in {repo}")
     return 0
 
@@ -628,8 +698,8 @@ def check(targets):
             if st["needs_review"]:
                 m = load(repo, sha)
                 got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
-                blocked.append(f"{repo} at {sha[:12]} ({got}; review range "
-                               f"{(st['review_from'] or '')[:12] or 'root'}..{sha[:12]})")
+                todo = " ".join(s[:12] for s in st["unreviewed"][:20])
+                blocked.append(f"{repo} at {sha[:12]} ({got}; unreviewed commits: {todo})")
     return blocked, unchecked
 
 

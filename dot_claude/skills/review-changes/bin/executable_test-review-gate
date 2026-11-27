@@ -155,6 +155,32 @@ if jq -e '.staff.verdict == "pass"' "$(git -C "$W" rev-parse --path-format=absol
   echo "ok    a handback written after the hook fired is recorded"
 else echo "FAIL  a handback written after the hook fired was not recorded"; fails=$((fails+1)); fi
 
+# patch ids: a stack of two branches passes at its top. A fix lands on the
+# bottom branch and the top is rebased onto it. Only the fix needs review, and
+# a pass at the new top covers the bottom branch too.
+S="$T/stack"; git clone -q "$T/origin" "$S" 2>/dev/null
+pass() { for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$S" "$1" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done; }
+unrev() { git -C "$S" checkout -q "$1"; "$G" status "$S" | jq -r '.unreviewed | length'; }
+expect() {  # name want got
+  if [ "$2" = "$3" ]; then echo "ok    $1"; else echo "FAIL  $1: want $2 got $3"; fails=$((fails+1)); fi; }
+q "$S" checkout -b b1; echo one > "$S/one"; q "$S" add one; q "$S" commit -m one
+q "$S" checkout -b b2; echo two > "$S/two"; q "$S" add two; q "$S" commit -m two
+pass "$(git -C "$S" rev-parse b2)"
+expect "a pass at the top covers the branch below it" 0 "$(unrev b1)"
+OLD1="$(git -C "$S" rev-parse b1)"
+q "$S" checkout b1; echo fix >> "$S/one"; q "$S" commit -am fix
+q "$S" rebase --onto b1 "$OLD1" b2
+expect "after a rebase only the fix needs review" 1 "$(unrev b2)"
+expect "the bottom branch needs only the fix" 1 "$(unrev b1)"
+pass "$(git -C "$S" rev-parse b2)"
+expect "a pass at the new top covers the fixed bottom branch" 0 "$(unrev b1)"
+q "$S" checkout -b b3 b1; printf 'one\nfix \n' > "$S/one"; q "$S" commit -am ws
+expect "a whitespace-only change is a new patch" 1 "$(unrev b3)"
+q "$S" checkout -b b4 "$OLD1"; echo two > "$S/two"; echo extra >> "$S/two"; q "$S" add two; q "$S" commit -m two
+expect "a commit whose patch changed in a rebase needs review" 1 "$(unrev b4)"
+
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
     "$G" gate | jq -r '.hookSpecificOutput.permissionDecision // empty')"
