@@ -343,6 +343,12 @@ expect "a long pass with its oldest commit dropped needs review" 1 \
 expect "a gate that stalls past its watchdog denies a reviewed push" deny \
   "$(jq -n --arg c "git push -u origin reviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
     REVIEW_GATE_WATCHDOG=1 REVIEW_GATE_TEST_STALL=3 "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+expect "a watchdog override of 0 clamps to 1 s instead of turning it off" deny \
+  "$(jq -n --arg c "git push -u origin reviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+    REVIEW_GATE_WATCHDOG=0 REVIEW_GATE_TEST_STALL=3 "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+expect "a non-ASCII watchdog override still lets the gate decide" deny \
+  "$(jq -n --arg c "git push origin unreviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+    REVIEW_GATE_WATCHDOG=² "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
 expect "a malformed deadline setting still lets the gate decide" deny \
   "$(jq -n --arg c "git push origin unreviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
     REVIEW_GATE_DEADLINE=10s "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"

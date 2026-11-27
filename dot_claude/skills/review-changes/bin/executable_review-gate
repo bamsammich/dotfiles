@@ -913,7 +913,7 @@ def check(targets):
 
 def gate(payload):
     stall = os.environ.get("REVIEW_GATE_TEST_STALL") or ""
-    if stall.isdigit():
+    if stall.isascii() and stall.isdigit():
         time.sleep(int(stall))  # lets the test reach the watchdog
     if OFF.exists():
         return 0
@@ -987,7 +987,8 @@ def main():
             os._exit(0)
         signal.signal(signal.SIGALRM, overrun)
         override = os.environ.get("REVIEW_GATE_WATCHDOG") or ""
-        signal.alarm(min(max(int(override), 1), WATCHDOG_SECONDS) if override.isdigit() else WATCHDOG_SECONDS)
+        ok = override.isascii() and override.isdigit()
+        signal.alarm(min(max(int(override), 1), WATCHDOG_SECONDS) if ok else WATCHDOG_SECONDS)
         try:
             code = gate(payload)
             signal.alarm(0)
