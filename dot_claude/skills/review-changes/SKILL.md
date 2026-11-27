@@ -1,10 +1,10 @@
 ---
 name: review-changes
-description: Run the security and staff-engineer reviews on a branch's unreviewed commits, in parallel subagents, and fix what they find. Use before every `git push` or pull request, whenever review-gate blocks a push, and when the user asks for a security or staff review of their changes.
+description: Run the security, staff-engineer and intent reviews on a branch's unreviewed commits, in subagents, and fix what they find. Use before every `git push` or pull request, whenever review-gate blocks a push, and when the user asks for a security or staff review of their changes.
 ---
 # review-changes
 
-Every commit that leaves this machine passes two reviews first, `security-reviewer` and `staff-reviewer`. Each runs as its own Opus subagent with no view of this conversation. A `SubagentStop` hook reads each reviewer's verdict and stores it as a marker for the reviewed commit. A `PreToolUse` hook blocks `git push`, `gh pr create` and pull-request tools until the commit being pushed has a pass from both.
+Every commit that leaves this machine passes review first. A full round runs three Opus subagents with no view of this conversation: `security-reviewer` and `staff-reviewer` in parallel, then `intent-reviewer`, which judges whether the change serves the work's intent and fits the application, and may contest one of their verdicts. A small round, whose commits only touch tests or docs and change at most 50 lines in all, needs `staff-reviewer` alone. A `SubagentStop` hook reads each verdict and stores it as a marker for the reviewed commit. A `PreToolUse` hook blocks `git push`, `gh pr create` and pull-request tools until every commit being pushed is covered by a round with a pass from each role it required.
 
 The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After changing it, run `bin/test-review-gate`, a table of push commands and the decision each should get.
 
@@ -12,13 +12,15 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
 1. **Commit first.** Reviews are keyed to a commit, so uncommitted changes are never covered. Commit everything you intend to push.
 
-2. **Find the commits.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `unreviewed` and `needs_review`. When `needs_review` is false, there is nothing to do. `unreviewed` lists the commits no pass covers yet, newest first. A pass covers every commit from `base` to the reviewed commit. A later commit counts as covered when its patch matches one of those (`git patch-id --verbatim`) and every patch the pass reviewed before it is still below it, in the same order. A rebase or a cascade up a stack therefore leaves only new or changed patches in `unreviewed`. So does a stack's bottom branch merging into the default branch, by fast-forward, merge commit, rebase or squash, as long as it merged unchanged. A cherry-pick, a dropped commit or a reorder asks for review again, and so does editing a commit in the middle of a branch: its old patch counts as dropped, so every reviewed commit above it asks again.
+2. **Find the commits.** Run `review-gate status` in the repository. Its JSON gives `head`, `base` (the fork point from the default branch), `unreviewed` and `needs_review`. When `needs_review` is false, there is nothing to do. `required_roles` names who this round needs: `staff` alone, or `security`, `staff` and `intent`. `unreviewed` lists the commits no pass covers yet, newest first. A pass covers every commit from `base` to the reviewed commit. A later commit counts as covered when its patch matches one of those (`git patch-id --verbatim`) and every patch the pass reviewed before it is still below it, in the same order. A rebase or a cascade up a stack therefore leaves only new or changed patches in `unreviewed`. So does a stack's bottom branch merging into the default branch, by fast-forward, merge commit, rebase or squash, as long as it merged unchanged. A cherry-pick, a dropped commit or a reorder asks for review again, and so does editing a commit in the middle of a branch: its old patch counts as dropped, so every reviewed commit above it asks again.
 
    In a stack of branches, run `status` on the top branch and review there. A pass at the top covers every branch below it.
 
 3. **Write the purpose.** Two to four sentences on what the change is for and any constraint the user stated. Give the reviewers nothing else from this conversation, so their reads are not anchored on yours.
 
-4. **Launch both reviewers in one message.** Two `Agent` calls in the same response, `subagent_type` set to `security-reviewer` and `staff-reviewer`, `run_in_background: false`. Calls sent together run in parallel. Give each the same prompt:
+   For a full round, also write the **intent file** in the scratchpad: issue description, cited design sections and the user's review comments on this work, each copied verbatim with its source named. Add nothing of your own; the intent reviewer exists to read the work's intent without your framing.
+
+4. **Launch the security and staff reviewers in one message**, or the staff reviewer alone in a small round. `Agent` calls in the same response, `run_in_background: false`, run in parallel. Give each the same prompt:
 
    ```
    Repository: <absolute path>
@@ -30,9 +32,13 @@ The helper lives at `~/.claude/skills/review-changes/bin/review-gate`. After cha
 
    Tell the reviewers to review the focus commits only, and to read the rest of the branch as context.
 
+   In a full round, once both report, write their reports verbatim to a **reviews file** and launch `intent-reviewer` with the first four lines of the prompt, then `Intent file: <path>` and `Reviews file: <path>`, and no purpose line.
+
+   When its report carries a `CONTEST:` other than `none`, send that contest once with `SendMessage` to the reviewer it names, asking for a final verdict. The reply is final; send no second contest.
+
 5. **Read the verdicts.** Run `review-gate status` again.
-   - `passed: true` means both reviewers passed and the hook recorded them. Push.
-   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. Take the list from `status` again, never from memory. A failed round covers nothing, so after it `unreviewed` still holds the commits the failed review looked at, plus the fix. Both reviewers run again on that whole list, in parallel. Giving them only the fix commits would record a pass for code nobody reviewed.
+   - `passed: true` means every required reviewer passed and the hook recorded them. Push.
+   - A reviewer returned `fix-required`: fix every blocking finding, commit, and go back to step 2. Take the list from `status` again, never from memory. A failed round covers nothing, so after it `unreviewed` still holds the commits the failed review looked at, plus the fix. The round's reviewers run again on that whole list. Giving them only the fix commits would record a pass for code nobody reviewed.
    - A reviewer passed but `status` shows no marker for it: the hook could not read the report header. Run that reviewer again.
 
 6. **Handle the rest.** Fix a `should-fix` finding when the fix is small and plainly right. Otherwise list it under a "Review notes" heading in the pull request description. Drop nits unless the fix is trivial.

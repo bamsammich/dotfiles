@@ -3,8 +3,9 @@
 
   review-gate status [repo]   JSON: head, base, the range still to review, and
                               whether head has passed both reviews.
-  review-gate record          SubagentStop hook. Reads a security-reviewer or
-                              staff-reviewer report and stores its verdict.
+  review-gate record          SubagentStop hook. Reads a security-reviewer,
+                              staff-reviewer or intent-reviewer report and
+                              stores its verdict.
   review-gate gate            PreToolUse hook. Denies `git push`, `gh pr create`
                               and pull_request_create tools unless the pushed
                               commit passed both reviews.
@@ -31,7 +32,15 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
-ROLES = {"security-reviewer": "security", "staff-reviewer": "staff"}
+ROLES = {"security-reviewer": "security", "staff-reviewer": "staff", "intent-reviewer": "intent"}
+# A round of review needs every role, unless it is small: commits that only
+# touch tests or docs and change at most SMALL_LINES lines in all need staff
+# alone. A marker written before the intent reviewer existed needed LEGACY.
+FULL = ["security", "staff", "intent"]
+SMALL = ["staff"]
+LEGACY = ["security", "staff"]
+SMALL_LINES = 50
+TEST_OR_DOC = re.compile(r"(^|/)(tests?|testdata|__tests__)/|(^|/)test-|_test\.|\.test\.|\.spec\.|\.md$")
 OFF = Path.home() / ".claude" / ".review-gate-off"
 SKILL = "review-changes"
 
@@ -58,9 +67,30 @@ def load(repo, sha):
         return {}
 
 
+def is_passed(m):
+    """Whether a marker holds a pass from every role its round required."""
+    return all(m.get(r, {}).get("verdict") == "pass" for r in m.get("required") or LEGACY)
+
+
 def passed(repo, sha):
-    m = load(repo, sha)
-    return all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values())
+    return is_passed(load(repo, sha))
+
+
+def required_roles(repo, shas):
+    """The roles a round reviewing shas needs: SMALL when every commit only
+    touches tests or docs and all of them change at most SMALL_LINES lines,
+    FULL otherwise. A binary file counts as code."""
+    total = 0
+    for sha in shas:
+        for line in (git(repo, "show", "--numstat", "--format=", "--no-renames", sha) or "").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            added, deleted, path = parts
+            if added == "-" or not TEST_OR_DOC.search(path):
+                return FULL
+            total += int(added) + int(deleted)
+    return SMALL if total <= SMALL_LINES else FULL
 
 
 # status examines a branch's newest MAX_COMMITS commits, and fails closed on a
@@ -134,7 +164,7 @@ def reviewed_sequences(repo):
             m = json.loads(f.read_text())
         except (OSError, ValueError):
             continue
-        if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
+        if is_passed(m):
             commits = sequence(repo, f.stem, m)
             if commits:
                 out.append((f.stem, commits))
@@ -289,7 +319,7 @@ def status(repo, head="HEAD"):
     head = git(repo, "rev-parse", "--verify", "-q", head + "^{commit}")
     if not head:
         return {"repo": repo, "head": None, "base_ref": None, "base": None, "last_passed": None,
-                "unreviewed": [], "passed": False, "needs_review": False}
+                "unreviewed": [], "required_roles": [], "passed": False, "needs_review": False}
     ref = base_ref(repo)
     base = git(repo, "merge-base", head, ref) if ref else None
     span = [f"{base}..{head}"] if base else [head, "--not", "--remotes"]
@@ -318,6 +348,8 @@ def status(repo, head="HEAD"):
         # The commits no pass covers, newest first. A rebase keeps a commit's
         # patch, so only new or changed patches land here.
         "unreviewed": unreviewed,
+        # Who must review the unreviewed commits.
+        "required_roles": required_roles(repo, unreviewed) if unreviewed else [],
         "passed": bool(shas) and not unreviewed,
         "needs_review": bool(unreviewed),
         # Patch matching stopped at the deadline, so some commits may be
@@ -441,12 +473,15 @@ def record(payload):
               file=sys.stderr)
         return 2
     m = load(repo, sha)
+    if "required" not in m:
+        # The round's first verdict fixes which roles it needs.
+        m["required"] = status(repo, sha)["required_roles"] or FULL
     m[role] = {"verdict": found["verdict"], "agent_id": payload.get("agent_id"),
                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     for k in ("covers", "sequence", "commits"):
         m.pop(k, None)
     save(repo, sha, m)
-    if all(m.get(r, {}).get("verdict") == "pass" for r in ROLES.values()):
+    if is_passed(m):
         sequence(repo, sha, m)
     log(role, payload, f"recorded {found['verdict']} for {sha} in {repo}")
     return 0
@@ -866,7 +901,8 @@ def check(targets):
             st = status(repo, sha)
             if st["needs_review"]:
                 m = load(repo, sha)
-                got = ", ".join(f"{r}: {m[r]['verdict']}" for r in ROLES.values() if r in m) or "no reviews yet"
+                need = m.get("required") or st["required_roles"]
+                got = ", ".join(f"{r}: {m[r]['verdict'] if r in m else 'missing'}" for r in need)
                 todo = " ".join(s[:12] for s in st["unreviewed"][:20])
                 if len(st["unreviewed"]) > 20:
                     todo += f" (+{len(st['unreviewed']) - 20} more)"
@@ -924,10 +960,10 @@ def gate(payload):
                        "Check the branch name and the directory."))
     if not blocked:
         return 0
-    return deny("Blocked by review-gate: these commits have not passed both the security and the staff review: "
+    return deny("Blocked by review-gate: these commits have not passed the reviews their round requires: "
                 + "; ".join(blocked)
-                + f". Commit your work, then follow the {SKILL} skill, which runs security-reviewer and "
-                "staff-reviewer in parallel and records their verdicts. Do not write review-gate marker files "
+                + f". Commit your work, then follow the {SKILL} skill, which runs the reviewers the round "
+                "requires and records their verdicts. Do not write review-gate marker files "
                 "yourself. If a blocking finding looks wrong, ask the user.")
 
 

@@ -15,7 +15,7 @@ git init -q -b main "$T/origin"; q "$T/origin" commit --allow-empty -m init
 git clone -q "$T/origin" "$T/w" 2>/dev/null; W="$T/w"
 q "$W" checkout -b reviewed; q "$W" commit --allow-empty -m r
 R="$(git -C "$W" rev-parse HEAD)"
-for role in security-reviewer staff-reviewer; do
+for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$W" "$R" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record
 done
@@ -181,7 +181,7 @@ else echo "FAIL  a handback written after the hook fired was not recorded"; fail
 # bottom branch and the top is rebased onto it. Only the fix needs review, and
 # a pass at the new top covers the bottom branch too.
 S="$T/stack"; git clone -q "$T/origin" "$S" 2>/dev/null
-pass() { for role in security-reviewer staff-reviewer; do
+pass() { for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$S" "$1" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done; }
 unrev() { git -C "$S" checkout -q "$1"; "$G" status "$S" | jq -r '.unreviewed | length'; }
@@ -222,7 +222,7 @@ merged_case() {  # name style
   echo more >> "$R/one"; q "$R" commit -am onefix
   q "$R" checkout -b m2; echo two > "$R/two"; q "$R" add two; q "$R" commit -m two
   local top; top="$(git -C "$R" rev-parse m2)"
-  for role in security-reviewer staff-reviewer; do
+  for role in security-reviewer staff-reviewer intent-reviewer; do
     printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$top" |
       jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
   q "$R" checkout -b landing origin/main
@@ -255,7 +255,7 @@ q "$R" checkout -b s2; echo b > "$R/b"; q "$R" add b; q "$R" commit -m b1
 echo more >> "$R/b"; q "$R" commit -am b2
 q "$R" checkout -b s3; echo c > "$R/c"; q "$R" add c; q "$R" commit -m c
 TOP="$(git -C "$R" rev-parse s3)"
-for role in security-reviewer staff-reviewer; do
+for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$TOP" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
 q "$R" checkout -b landing origin/main
@@ -275,7 +275,7 @@ q "$R" checkout -b m1; echo one > "$R/one"; q "$R" add one; q "$R" commit -m one
 echo more >> "$R/one"; q "$R" commit -am onefix
 q "$R" checkout -b m2; echo two > "$R/two"; q "$R" add two; q "$R" commit -m two
 TOP="$(git -C "$R" rev-parse m2)"
-for role in security-reviewer staff-reviewer; do
+for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$R" "$TOP" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
 q "$R" checkout -b landing origin/main; echo other > "$R/one"; q "$R" add one; q "$R" commit -m "one, changed (#1)"
@@ -307,7 +307,7 @@ done
 q "$L" reset -q --hard "$c"
 expect "an unreviewed branch over 500 commits needs review" 1 \
   "$([ "$("$G" status "$L" | jq -r '.unreviewed | length')" -gt 0 ] && echo 1 || echo 0)"
-for role in security-reviewer staff-reviewer; do
+for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$L" "$c" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
 expect "a passed branch over 500 commits needs no review" 0 "$("$G" status "$L" | jq -r '.unreviewed | length')"
@@ -324,7 +324,7 @@ expect "a rebased branch over 500 commits needs review" 1 \
 # those 500 cherry-picked above it. Every examined commit matches the pass, but
 # status never examined the new commit, so the branch needs review.
 q "$L" checkout -b exact long~2
-for role in security-reviewer staff-reviewer; do
+for role in security-reviewer staff-reviewer intent-reviewer; do
   printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$L" "$(git -C "$L" rev-parse exact)" |
     jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
 q "$L" checkout -b exact-evil origin/main; echo evil > "$L/evil"; q "$L" add evil; q "$L" commit -m evil
@@ -346,6 +346,35 @@ expect "a gate that stalls past its watchdog denies a reviewed push" deny \
 expect "a malformed deadline setting still lets the gate decide" deny \
   "$(jq -n --arg c "git push origin unreviewed" --arg cwd "$W" '{tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
     REVIEW_GATE_DEADLINE=10s "$G" gate 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecision // empty')"
+
+# A round needs every reviewer, unless its commits only touch tests or docs
+# and change at most 50 lines, when staff alone will do.
+TR="$T/tiers"; git clone -q "$T/origin" "$TR" 2>/dev/null; q "$TR" checkout -b tiers
+echo code > "$TR/app.go"; q "$TR" add app.go; q "$TR" commit -m code
+CODE="$(git -C "$TR" rev-parse HEAD)"
+expect "a code round needs every reviewer" "security,staff,intent" \
+  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
+for role in security-reviewer staff-reviewer; do
+  printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$CODE" |
+    jq -Rs --arg t "$role" '{agent_type:$t, last_assistant_message:.}' | "$G" record; done
+expect "a code round without the intent review still needs review" true \
+  "$("$G" status "$TR" | jq -r '.needs_review')"
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$CODE" |
+  jq -Rs '{agent_type:"intent-reviewer", last_assistant_message:.}' | "$G" record
+expect "a code round with every reviewer passes" true "$("$G" status "$TR" | jq -r '.passed')"
+echo 'func TestX() {}' > "$TR/app_test.go"; q "$TR" add app_test.go; q "$TR" commit -m test
+expect "a small test-only round needs staff alone" "staff" \
+  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
+printf 'REPO: %s\nREVIEWED: %s\nVERDICT: pass\n' "$TR" "$(git -C "$TR" rev-parse HEAD)" |
+  jq -Rs '{agent_type:"staff-reviewer", last_assistant_message:.}' | "$G" record
+expect "a small test-only round passes on staff alone" true "$("$G" status "$TR" | jq -r '.passed')"
+seq 1 60 > "$TR/big_test.go"; q "$TR" add big_test.go; q "$TR" commit -m bigtest
+expect "a test-only round over 50 lines needs every reviewer" "security,staff,intent" \
+  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
+q "$TR" reset -q --hard HEAD~1
+echo more >> "$TR/app.go"; echo more >> "$TR/app_test.go"; q "$TR" commit -am mixed
+expect "a round touching code needs every reviewer" "security,staff,intent" \
+  "$("$G" status "$TR" | jq -r '.required_roles | join(",")')"
 
 mcp() {  # expected tool_input-json [cwd]
   got="$(jq -n --argjson i "$2" --arg cwd "${3:-$W}" '{tool_name:"mcp__github__create_pull_request",tool_input:$i,cwd:$cwd}' |
